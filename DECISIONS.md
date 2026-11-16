@@ -90,3 +90,13 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-42. Visual design: text-first, monochrome, book-style serif typography, written from scratch.** One serif, one narrow centered column, ink on paper, small caps for labels and headings, thin rules instead of boxes, underlined links, and buttons set as words. These are general principles of book design. The site has its own masthead, navigation, and layout, and one ornament of its own: a small open-book mark above the footer.
 
 **D-43. Light and dark themes follow the system, with a small toggle.** A ~1 KB script cycles auto, light, and dark, and remembers the choice in this browser only (localStorage). Without JavaScript, the site simply follows the system setting and the toggle stays hidden.
+
+**D-44. Rejected: a scheduled Claude Code agent on the owner's machine with a moderator API.** An earlier design had a headless Claude Code run on the owner's computer, calling a moderator JSON API with a moderator secret. It was cancelled before anything shipped. The reasons: it gave a model tools and shell access on a personal machine; it put a write-capable secret on that machine; it added an outside endpoint that could change the site, a new attack surface; and site content (reports, titles) would flow into an agent with tools, a dangerous place for prompt injection. Nothing from it was deployed, scheduled, or kept except the soft-delete trash and the audit-log reasons.
+
+**D-45. Replacement: one tool-free API call a day, inside the app.** The app sends the report and held-works queues to `claude-haiku-5-5` (a small, inexpensive model; effort `low`) as data, with a fixed system prompt and structured JSON output. The model has no tools, no web access, and no code execution. Code validates every entry and applies only approve, remove-to-trash, or flag. Over 20 removals, invalid output, a refusal, or truncation means no action and a flagged run. The site works the same with no API key.
+
+**D-46. Items are reviewed once.** After a run, each item is marked reviewed, before any action, so a restored item keeps the mark. Flagged items wait for the owner, not for another model pass. An API error leaves items unmarked, to be retried the next day.
+
+**D-47. A removed meeting takes its reports and attendees into the trash with it, and restore brings them back.** Bulk "flood" removal by the admin is still a hard delete; it is meant for emergencies.
+
+**D-48. The digest is a read-only JSON endpoint with its own token.** A cloud task can read it without any power to change the site. It holds no personal data beyond titles and the model's short reasons.

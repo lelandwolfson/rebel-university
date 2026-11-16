@@ -36,6 +36,9 @@ All configuration is environment variables. See [.env.example](.env.example).
 | `BASE_URL` | no | Defaults to `https://rebeluniversity.org` in production. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | no | Turn on email notices. Without `SMTP_HOST`, email is off and the app works fully. |
 | `SECURITY_CONTACT` | no | Email or URL for `/.well-known/security.txt`. |
+| `ANTHROPIC_API_KEY` | no | Turns on daily AI-assisted review of reports and held works (`claude-haiku-5-5`, no tools). Without it, the job is skipped. Pause it from the admin Moderation page. |
+| `AI_MODEL` | no | Override the moderation model (default `claude-haiku-5-5`). |
+| `DIGEST_TOKEN` | no | 32+ characters. Enables the read-only `GET /admin/digest.json` (bearer token). |
 | `DATA_DIR` | no | Where the SQLite database and backups live. |
 | `TRUST_PROXY` | behind a proxy | `true` to read the client IP from `Fly-Client-IP` / `X-Forwarded-For` and redirect plain HTTP. |
 

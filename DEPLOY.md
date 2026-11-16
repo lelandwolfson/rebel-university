@@ -33,6 +33,12 @@ You need a terminal with this repo checked out.
    ```sh
    fly secrets set SMTP_HOST=smtp.example.com SMTP_PORT=587 SMTP_USER=... SMTP_PASS=... SMTP_FROM="Rebel University <no-reply@rebeluniversity.org>"
    ```
+   Optional, AI-assisted moderation and its read-only digest (see the privacy page):
+   ```sh
+   fly secrets set ANTHROPIC_API_KEY=sk-ant-... DIGEST_TOKEN="$(openssl rand -hex 24)"
+   ```
+   Put a monthly spending cap on that key first (OWNER-TODO.md).
+
    Optional, a security contact email for `/.well-known/security.txt`:
    ```sh
    fly secrets set SECURITY_CONTACT=security@rebeluniversity.org

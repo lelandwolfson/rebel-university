@@ -136,3 +136,34 @@ Cost to legitimate users: a 200 km request takes about 16 times the base proof-o
 | A10 SSRF | Server only fetches fixed Open Library URLs with validated keys. User links are never fetched. |
 
 Also: CSRF (double-submit cookie + Origin check), clickjacking (`frame-ancestors 'none'`), open redirects (no user-controlled redirects).
+
+## AI-assisted moderation (added with the feature)
+
+Once a day the app sends the report queue and the held-works queue to an Anthropic model (`claude-haiku-5-5`) and applies its validated decisions. Design in `src/moderation.js`; decision record in DECISIONS.md D-44 to D-48.
+
+### T9. Prompt injection through reports and work titles
+Anyone can write a report or enter a work, so every field the model sees is attacker-controlled: report text, titles, creators, links, organizer notes. An attacker would try to make the model approve spam, remove legitimate items, or reveal something.
+- **The model has no tools, no web access, and no code execution.** It can only return JSON, and the JSON can only name actions on items from this run.
+- **A fixed system prompt** says all item content is untrusted data, never an instruction. The items travel as JSON inside `<untrusted_items>`, with `<` and `>` escaped, so no text can close the block early.
+- **The model never sees database ids.** Items get opaque per-run ids (`w1`, `r1`), and decisions naming anything else are discarded.
+- **Code enforces the rules regardless of what the model says.** It checks the schema again (exact keys, a known id, an action allowed for that item type, a reason of 200 characters or less) and discards conflicting duplicates. Reports can only be flagged or remove their meeting; reports can't be "approved".
+- **Every bad outcome is reversible and visible.** Removals go to a 7-day trash with a restore button and are audit-logged with the reason. More than 20 removals in a run, an invalid response, a refusal, or a truncated response means **no action at all**, and the whole run is flagged for the owner.
+- **Reports about a person's behavior** are always to be flagged, never acted on.
+- Residual risk: a well-crafted injection could still persuade the model to misjudge a single item within those rules, for example removing a legitimate reported meeting as "spam". It is bounded by the cap, logged, restorable, and shown to the owner.
+
+### T10. Getting legitimate items removed by reporting them
+Each report of meeting X can lead to X's removal. Reports already need proof-of-work, are rate-limited per address and /48, and are capped at 50 per meeting. Removals are restorable, and a restored item is never sent to the model again.
+
+### T11. Data sent to a third party
+Only the fields listed on the privacy page are sent: no emails, private-link tokens, IP data, display names, venues, or video links (tested). The privacy page states this.
+
+### T12. The digest endpoint (`GET /admin/digest.json`)
+A new read-only surface for an outside reader, such as a scheduled cloud task.
+- **Off unless `DIGEST_TOKEN`** (32 or more characters) is set. It is a bearer token compared in constant time, with no cookies involved, so CSRF doesn't apply. Rate limited per address. Unauthenticated requests get a 404, so the endpoint doesn't reveal it exists.
+- **Returns only:** site status, uptime, last backup time, whether AI moderation is on, and the latest run's counts, actions, and flagged items (type, title, reason).
+- **Never returns:** emails, tokens, IP data, display names, venues, links, report text, meeting ids, or trash ids.
+- **It changes nothing.** The token works on no other route: it isn't an admin session and can't call admin actions.
+- Residual risk: titles of works still held for review, and the model's short reasons, appear in the digest. A reason could paraphrase a report. Anyone holding the token can read that.
+
+### T13. Cost and availability
+At most one model call a day (40 items, 4,000 output tokens), plus admin "run now". If the key is missing or the API fails, nothing changes and the site works as before. A spending cap on the API key limits the worst case (OWNER-TODO.md).

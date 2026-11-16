@@ -113,6 +113,8 @@ export function privacy(ctx) {
 <tr><td>Meetings: work, city, date, time zone, format, venue, video link, organizer note</td><td>To run the meeting</td><td>30 days after the meeting date</td></tr>
 <tr><td>Your display name in a meeting</td><td>So the people in that meeting can recognize each other</td><td>When you leave, or 30 days after the meeting</td></tr>
 <tr><td>Reports: the meeting, a reason, and optional text. Nothing about who sent it.</td><td>To handle abuse</td><td>When dismissed, or with the meeting</td></tr>
+<tr><td>Removed requests, meetings, and works</td><td>So the admin can undo a removal</td><td>7 days after removal</td></tr>
+<tr><td>Review records: what the assistant or admin did, with titles and reasons</td><td>Accountability</td><td>The last 60 daily runs; the admin log after 180 days</td></tr>
 <tr><td>Backups of the database</td><td>To recover from failure</td><td>Within 12 days (daily backups kept 7 days, inside disk snapshots kept 5 days)</td></tr>
 </tbody>
 </table>
@@ -136,6 +138,14 @@ export function privacy(ctx) {
 
 <h2>Cookies</h2>
 <p>One cookie that protects forms from cross-site forgery. It holds a random value and nothing about you. The admin has a second cookie when signed in.</p>
+
+<h2>AI-assisted review</h2>
+<p>Once a day, an AI assistant helps the site admin review two queues: reports sent about meetings, and hand-entered works waiting for review. For that purpose only, the text below is sent to Anthropic, the company that makes the assistant:</p>
+<ul>
+  <li>For a report: its reason, its text, and the reported meeting's work (title, author or creator, kind), format (in person or video), and the organizer's short note.</li>
+  <li>For a held work: its kind, title, author or creator, and link.</li>
+</ul>
+<p>Never sent: email addresses, private links, IP addresses, display names, venues, video links, or anything else. The assistant can approve a work that is plainly real, or move obvious spam to a trash the admin can restore from for 7 days. Anything about a person's behavior, and anything unclear, goes to the admin to decide. Every action is logged with its reason. The assistant has no other access to the site.</p>
 
 <h2>Other services</h2>
 <ul>
