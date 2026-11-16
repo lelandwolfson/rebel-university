@@ -58,8 +58,10 @@ People now choose how far they will travel: 25, 50, 100, or 200 km. Two in-perso
 **Limits chosen, so probing costs at least as much as now:**
 1. **Proof-of-work scales with the area a probe covers.** Difficulty is multiplied by `max(1, (r/50)²)`: ×1 for 25 and 50 km, ×4 for 100 km, ×16 for 200 km. The useful reach of any probe is at most its own limit, so the work spent per km² searched is at least today's for every reader. The difficulty is checked at submit time against the distance actually submitted, so a cheap challenge can't be used for a wide request.
 2. **A distance change counts as a probe.** It needs its own proof-of-work at the new distance's difficulty. It counts against the same 3-per-work-per-connection-per-day budget. It is also limited to 3 changes per request per day, whatever the connection.
-3. **The per-connection budget stays at 3 probes per work per day, at any distance.** The area searchable per connection per day rises only against readers who chose 100 or 200 km, and they chose that exposure. The CPU cost per km², the binding cost for an attacker who rotates addresses, does not fall for any reader.
-4. **The distance is never public.** It isn't shown on the board, the meeting pages, or the admin page. It appears only on the request's own private page.
+3. **The per-connection budget stays at 3 probes per work per day, at any distance.** On IPv6 it also applies per /48, at 4 times the per-/64 limit, so one free tunnel can't multiply it 65,536 times *(second review)*. The area searchable per connection per day rises only against readers who chose 100 or 200 km, and they chose that exposure. The CPU cost per km², the binding cost for an attacker who rotates addresses, does not fall for any reader.
+4. **The distance is never public.** It isn't shown on the board, the meeting pages, or the admin page. It appears only on the request's own private page. Board presence uses a fixed 50 km rule, so watching the board reveals nothing about anyone's chosen distance *(second review)*.
+
+*(Second review)* An honest limit on point 1: proof-of-work is cheap for a determined attacker with native code (about 0.02 core-seconds per 50 km probe). "No cheaper than before" is true, but proof-of-work is a speed bump. The binding limits are the per-/64 and per-/48 budgets, which never get evicted.
 
 Cost to legitimate users: a 200 km request takes about 16 times the base proof-of-work. That is a few seconds on an old phone, and the form says so.
 - **Rejoining after removal** *(review)*: the removed person's address is blocked from that meeting for 24 h (memory only).
@@ -77,6 +79,9 @@ Cost to legitimate users: a 200 km request takes about 16 times the base proof-o
 - `Cache-Control: no-store` on private pages.
 - No logging of request paths.
 - Rate limit on token lookups per IP to slow any guessing anyway.
+
+### T3a. Using the site to send email *(second review)*
+- Anyone can type anyone's address. Emails contain no typed text and no titles, nothing is sent for held requests, and each address gets at most 3 a day.
 
 ### T4. Harvesting notification emails
 - Never displayed anywhere, including to the person who entered it (we show "an email is set").
@@ -98,8 +103,8 @@ Cost to legitimate users: a 200 km request takes about 16 times the base proof-o
 ### T7. Floods and DoS
 - Proof-of-work on every write (adaptive per IP and site-wide). Challenges are bound to the client and the current difficulty, signed over salt and challenge, and the key is per process *(review)*.
 - Honeypot field and minimum fill time (these only stop naive bots; not counted on) *(review)*.
-- Client IP taken only from Fly's edge header; IPv6 limited per /64; limiter memory capped *(review)*.
-- `/board` cached and recomputed at most every 15 s *(review)*.
+- Client IP taken only from Fly's edge header; IPv6 limited per /64; limiter memory capped *(review)*. Security counters live in a separate map that is never evicted and fails closed; IPv6 is also limited per /48 *(second review)*.
+- `/board` uses a spatial grid, refreshes at most hourly, and works are capped at 2,000 open requests *(second review)*.
 - Per-IP rate limits; per-link rate limits.
 - Duplicate detection (same IP + work + place within an hour).
 - Body size limit (16 KB), header/request timeouts.
@@ -107,8 +112,12 @@ Cost to legitimate users: a 200 km request takes about 16 times the base proof-o
 - Open Library lookups are cached and rate limited; a slow upstream cannot hang requests (timeout).
 - Accepted: a large botnet can still exhaust a single small server. The host's edge absorbs volumetric attacks.
 
+### T7a. Poisoning shared works *(second review)*
+- The first poster of a hand-entered work sets its title and link for everyone. Works with links are held for admin review. Open Library text, which anyone can edit there, is cleaned like user input. Signed work references expire after a day.
+
 ### T8. Full database leak or legal demand
-- See "What exists to steal". Data is minimal, hashed, encrypted, and short-lived. Backups are kept 7 days.
+- See "What exists to steal". Data is minimal, hashed, encrypted, and short-lived. Backups are kept 7 days, inside snapshots kept 7 days. Deleted rows are also flushed from SQLite's write-ahead log right away *(second review)*.
+- Seizing a *running* server also gets its memory, including the daily key that scrambles addresses, so recent posters' addresses could be recovered by brute force. Memory counters are scoped per work and meeting so they don't link a person's actions. Stated on the privacy page *(second review)*.
 - Privacy page states exactly what exists so a demand can be answered honestly.
 
 ## General web risks (OWASP Top 10, 2021)

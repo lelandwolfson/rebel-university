@@ -64,3 +64,13 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-29. Wider distances cost more proof-of-work, and a distance change counts as a new probe.** A 200 km request needs 16 times the base work, and 100 km needs 4 times (proportional to area). Changing the distance needs proof-of-work for the new distance. It counts against the 3-per-work-per-connection daily budget and is capped at 3 changes per request per day. This keeps probing at least as costly as with a fixed 50 km (THREAT-MODEL.md T1a). The cost to a rural reader is a few extra seconds, once.
 
 **D-30. Video-only and online-only requests store the default distance.** The distance only matters in person, so a sent value is ignored and costs no extra work.
+
+**D-31. The open board uses a fixed rule: nobody for the same work within 50 km, and no video match.** It does not use people's chosen distances, because the board is public and would otherwise reveal them (second review). Someone matched at 150 km by two 200 km readers stays on the board, which still truthfully says nobody is nearby. The board refreshes at most hourly, matching the hour-rounded timestamps.
+
+**D-32. Hand-entered works that carry a link are always held for admin review.** The first poster's link is shown to everyone who later meets about that work, so it can't be trusted unreviewed. Works without a link flow as before unless the hold switch is on.
+
+**D-33. Emails never include the work's title or any typed text.** Anyone can type any address, so emails must not carry their words, and mail providers needn't learn what people read. The private link shows the work. No email is sent for held requests, and each address gets at most 3 a day (counted in memory).
+
+**D-34. At most 2,000 open requests per work.** This bounds the work any one title can cause. It is far above any expected real use.
+
+**D-35. Rate-limit counters are split.** Traffic counters (page views, lookups) can be evicted under a flood. Security counters (posting, probing, blocks) never are. If their map ever fills, the site refuses new posts until it drains: brief unavailability rather than silently lifting protections. IPv6 limits apply per /64 and, more loosely, per /48.

@@ -51,3 +51,61 @@ The reviewer tried these and could not break them:
 - **The proof-of-work slows bots but cannot stop a well-funded one.** The admin "hold manual entries" switch and bulk remove are the backstop.
 - **Removing an attendee who shares an address**, such as library wifi, blocks others on that address from rejoining that one meeting for 24 h.
 - **Board freshness:** it can lag by up to 15 s.
+
+---
+
+# Second pass: 2026-11-16
+
+**Method:** a new reviewer, a fresh agent, got only THREAT-MODEL.md and the code. It was told not to read this file, DECISIONS.md, or git history, so the first review's findings didn't guide it. It was asked to focus on four areas:
+- the defenses added after the first review
+- the new travel-distance feature
+- proof-of-work, private links, and admin login
+- anything that links one person's requests or display names
+
+It attacked a running server and confirmed 10 of 11 findings by running them. Every finding was fixed. Tests are in `test/review2.test.js`, one or more per finding.
+
+## Findings and fixes
+
+| # | Severity | Finding | Fix | Test |
+|---|---|---|---|---|
+| 1 | High | **The limiter evicts security state.** About 105k cheap page views from one /48 filled the shared counter map. Evicting the oldest 10% then erased every guard: the distance-change cap, the rejoin block, the probe budget, and duplicate checks. Confirmed live: a 4th distance change was blocked, and after a 4-second flood a 5th went through. A removed attendee rejoined. | Security counters now live in their own map. It is never evicted and fails closed (refuses) if it ever fills. Only cheap traffic counters (page views, link lookups, searches) are evictable. | `finding 1` |
+| 2 | Medium | **Budgets don't bind on IPv6.** A free tunnel gives a /48, which is 65,536 /64s, each with a fresh budget. | Posting, probing, joining, search, and admin limits also apply per /48, at 4 to 10 times the per-/64 limit. Proof-of-work difficulty also follows /48 activity. | `finding 2` |
+| 3 | Medium | **Board DoS.** One work with 10,000 spread-out requests made each board refresh block for 5.8 s, every 15 s. | A spatial grid compares only nearby requests (10,000 requests now take well under 1.5 s, tested). The board refreshes at most hourly. Each work is capped at 2,000 open requests. | `finding 3` (speed, and identical results to checking every pair) |
+| 4 | Medium | **Distance leak through the public board.** A request left the board only when matched within both people's distances, so watching the board revealed lower bounds on chosen distances. The 15 s refresh also timed posts to about 15 s. | The board uses a fixed rule independent of chosen distances: nobody within 50 km, and no video match. It refreshes at most hourly. | `finding 4` (every distance combination gives the same board, also over HTTP) |
+| 5 | Medium | **Proof-of-work is weak in absolute terms.** A probe costs about 0.02 core-seconds natively. Meanwhile, stacked multipliers (per-IP ×64, site-wide ×16, distance ×16) could demand 320M hashes from an honest user. | Required work is capped at 20M. The threat model now treats proof-of-work as a speed bump; the binding limits are the never-evicted /64 and /48 budgets. | `finding 5` |
+| 6 | Medium | **First poster sets shared content.** An attacker could pre-register popular films with a phishing link that every later meeting showed. Open Library titles, which anyone can edit there, kept URLs. Signed work references never expired. | Hand-entered works with a link are always held for admin review. Open Library text is cleaned like user input. Work references expire after 24 hours. | `finding 6`; flow test `hand-entered works...` |
+| 7 | Low–medium | **The site emails arbitrary addresses**, even with hold on, and the emails carried the attacker's text (for example "CHEAP MEDS CALL 555..."). | No email for held requests. Emails contain no title or typed text. At most 3 emails per address per day. | `finding 7` |
+| 8 | Low–medium | **Search shutdown.** Cache hits counted toward the global Open Library cap, so 16 /64s could turn search off for everyone. | Only real upstream fetches count. Cached answers are always served. A per-/48 tier was added. | `finding 8` |
+| 9 | Low | **Rejoin block lapses early.** It was keyed by the daily-rotating address key, so it lasted until the next rotation (about 12 h on average), and a block written across the rotation never applied. | The previous day's key is kept and checked too. | `finding 9` (removal, then past the rotation, then rejoin is refused) |
+| 10 | Low | **Memory links a person's actions.** Counter keys like `work-per-ip:<ipKey>|<work>` tied one address's works and meetings together in memory. The scrambling key in the same memory would let someone recover the address. | Per-work and per-meeting counters are keyed by an HMAC of (address key, scope), with no shared prefix. Rejoin data stores only those per-meeting keys. The privacy page now states what a seized running server would hold. | `finding 10` |
+| 11 | Low | **Deleted rows stayed in the WAL file**: a closed request's token hash and encrypted email remained in `rebel.db-wal`. | `wal_checkpoint(TRUNCATE)` runs after every user deletion and every hourly cleanup. | `finding 11` (no file in the data folder contains the deleted row) |
+| info | Info | `/admin?done=` echoed arbitrary text. Failed logins wrote one audit row each, so they could flood the log. | Only known action names are shown. Failed logins are audited at most once per 15 minutes. | n/a |
+
+## Compared with the first review
+
+- **Bypassed first-review fixes:**
+  - *Finding 4 (IPv6 /64 limits, limiter cap)* was bypassed twice: by flooding the limiter until it evicted guards (#1), and by using a whole /48 (#2).
+  - *Finding 8 (rejoin block)* was bypassed by the same eviction, and it lapsed at key rotation (#9).
+  - *Finding 6 (probe budget)* was multiplied by /48 rotation (#2).
+  - *Finding 7 (board DoS)*: the 15 s cache only slowed it; it was still exploitable at scale (#3).
+  - *Finding 5 (link immutability)* held as written, but its sibling did not: the *first* poster's link (#6).
+  - *Finding 11 (Open Library global cap)*: the fix itself created a way to shut search off (#8).
+
+  All of these are now fixed with tests.
+- **First-review fixes that held:**
+  - admin lockout (1)
+  - proof-of-work binding, forgery, and replay (2, 3)
+  - random ids (9)
+  - URL stripping (12)
+  - XSS, CSRF, ICS, and SQL protections
+- **New with the distance feature:** the board leak (#4). The extra proof-of-work for wider distances and the distance-change limits held against direct attack. They fell only to the limiter eviction (#1), now fixed.
+- **Lesson:** both reviews found that per-address limits are only as strong as the address bucketing and the memory they live in. Guards now sit in their own map, which fails closed.
+
+## Accepted risks, second pass
+
+Added to the earlier list:
+
+- **Fail-closed guard map.** Filling the guard map (300,000 entries) needs that many actions that passed proof-of-work, spread across many /48s. If it ever happens, new posts are refused until entries expire (at most a day). We prefer that to silently lifting the protections.
+- **Proof-of-work is a speed bump.** An attacker with native code and many /48s or IPv4 addresses can still probe. Each probe needs a request, and in-person matching already reveals roughly where someone is within the distance they chose.
+- **Board accuracy.** The fixed 50 km rule can list a reader who already has a wider-distance match. The board still truthfully says nobody is nearby, and it lags by up to an hour.
+- **A seized running server.** Its memory holds the daily address-scrambling key, so recent addresses could be recovered by brute force. This is stated on the privacy page.

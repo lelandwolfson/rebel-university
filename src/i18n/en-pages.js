@@ -111,7 +111,7 @@ export function privacy(ctx) {
 <tr><td>The work you name (title, author or creator; for hand-entered works, an optional link)</td><td>It is the basis of a match</td><td>When no request or meeting uses it any more</td></tr>
 <tr><td>Your request: the work, the city you picked (or "online only"), the meeting format, how far you will travel, the hour it was posted</td><td>To find matches</td><td>When you close it, or 90 days after posting</td></tr>
 <tr><td>A hash of your private link</td><td>To recognize the link when you return. We cannot turn the hash back into the link.</td><td>With the request or meeting</td></tr>
-<tr><td>Your email address, if you give one</td><td>To tell you a match exists. Encrypted. Never shown to anyone.</td><td>When you remove it, close the request, or the request expires</td></tr>
+<tr><td>Your email address, if you give one</td><td>To tell you a match exists. Encrypted. Never shown to anyone. Our emails never include the work's title or anything anyone typed.</td><td>When you remove it, close the request, or the request expires</td></tr>
 <tr><td>Meetings: work, city, date, time zone, format, venue, video link, organizer note</td><td>To run the meeting</td><td>30 days after the meeting date</td></tr>
 <tr><td>Your display name in a meeting</td><td>So the people in that meeting can recognize each other</td><td>When you leave, or 30 days after the meeting</td></tr>
 <tr><td>Reports: the meeting, a reason, and optional text. Nothing about who sent it.</td><td>To handle abuse</td><td>When dismissed, or with the meeting</td></tr>
@@ -123,14 +123,14 @@ export function privacy(ctx) {
 <h2>What we don't store</h2>
 <ul>
   <li>Your name, unless you type it as a display name.</li>
-  <li>Your IP address. To limit spam we keep short counters in memory, keyed by a scrambled form of the address that changes every day. They are never written to disk and expire within 24 hours.</li>
+  <li>Your IP address. To limit spam we keep short counters in memory, keyed by a scrambled form of the address (for IPv6, of its network prefix). The scrambling key changes every day and is never written to disk; counters expire within 24 hours. To be exact about the limits of this: while the server is running, its memory holds that key, so someone who seized the running machine could work out which addresses recently posted or joined. The counters are kept separate per work and per meeting so they don't link one person's actions together.</li>
   <li>Logs of the pages you visit.</li>
   <li>Your birth date or any ID.</li>
 </ul>
 
 <h2>Who sees what</h2>
 <ul>
-  <li><strong>Everyone:</strong> the open board (works with no match yet, with region and country only), and the meeting listing (work, city, date, format).</li>
+  <li><strong>Everyone:</strong> the open board (works with nobody within 50 km or on video yet, with region and country only, updated about hourly), and the meeting listing (work, city, date, format).</li>
   <li><strong>You, with your private link:</strong> your request, how far you said you will travel, and how many people match it. Nobody else sees your travel distance.</li>
   <li><strong>People who join a meeting:</strong> its venue, video link, note, and the display names of others who joined.</li>
   <li><strong>The site admin:</strong> requests and meetings (never emails), reports, and the audit log of admin actions.</li>
