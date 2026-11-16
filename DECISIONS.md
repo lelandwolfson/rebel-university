@@ -80,3 +80,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-37. flyctl installed from its official GitHub release, checksum-verified, into ~/.fly/bin.** The Arch package manager route needed sudo. Release v0.5.8 was used rather than the same-day latest.
 
 **D-38. The 18+ policy is one plain sentence in the terms, and appears nowhere else.** *(Owner's decision, replacing the original instruction to state it on the home page, forms, and footer.)* Repeating it on every page made the site read as a warning rather than what it is, an open invitation to meet and talk about a work. It is not replaced by other warnings. The organizer can still remove anyone, and the report reasons are unchanged except that the age-specific one now reads neutrally ("A concern about someone in the meeting"). A test checks that no other page, form, or email mentions age.
+
+**D-39. `www` uses A/AAAA records, not a CNAME.** `fly certs add` recommends A and AAAA records pointing at the app's shared IPv4 and dedicated IPv6 for both names. The app redirects `www` to the bare domain.
+
+**D-40. Shared IPv4, dedicated IPv6 (both free).** A dedicated IPv4 costs about $2/month and isn't needed for HTTPS on Fly.

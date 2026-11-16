@@ -42,7 +42,7 @@ You need a terminal with this repo checked out.
    ```sh
    fly deploy --ha=false
    ```
-   Always use `--ha=false`. Without it, Fly creates a second machine with its own separate database. Run `fly status` and confirm there is exactly one machine. If there are two, run `fly scale count 1`.
+   Fly builds the image on its own remote builder, so you don't need Docker locally. Always use `--ha=false`. Without it, Fly creates a second machine with its own separate database. Run `fly status` and confirm there is exactly one machine. If there are two, run `fly scale count 1`.
 
    This first deploy is also the first real build of the Docker image (see OWNER-TODO.md). If it fails, `fly logs` shows why.
 
@@ -62,9 +62,10 @@ You need a terminal with this repo checked out.
    |---|---|---|
    | `A` | `@` | the `v4` address from `fly ips list` |
    | `AAAA` | `@` | the `v6` address from `fly ips list` |
-   | `CNAME` | `www` | `rebel-university.fly.dev` (your app name + `.fly.dev`) |
+   | `A` | `www` | the same `v4` address |
+   | `AAAA` | `www` | the same `v6` address |
 
-   Remove any other `A`, `AAAA`, or `CNAME` records for `@` and `www` (registrars often add parking records). Set TTL to 300 or the lowest offered.
+   (Fly recommends plain A/AAAA records for `www` too; `fly certs add` prints the exact values.) Remove any other `A`, `AAAA`, or `CNAME` records for `@` and `www` (registrars often add parking records). Set TTL to 300 or the lowest offered.
 
 9. **Confirm HTTPS.** Certificates are issued once DNS resolves, usually within minutes, sometimes up to an hour.
    ```sh
