@@ -44,6 +44,24 @@ A full leak gives an attacker: a list of works people want to discuss, rough cit
 - **Watching the open board.** Board shows only work + region/country (not city) + format. No dates, counts per city, or names.
 - **Linking a display name across meetings.** Display names are free-form per meeting; there is no user id; nothing in the DB links two attendee rows. A person who reuses a distinctive name links themselves; the join form suggests not reusing names.
 - **Watching a request's match count** to infer when someone new posts, or posting probes from several cities to triangulate a reader *(review)*. Limited to 3 requests per work per connection per day, plus PoW and posting limits. Residual risk accepted (SECURITY-REVIEW.md).
+
+### T1a. Probing with a chosen travel distance (added before building it)
+
+People now choose how far they will travel: 25, 50, 100, or 200 km. Two in-person requests match only when they are within **both** people's limits.
+
+**What changes for a prober.** A probe posted with limit `r_a` matches a reader with limit `r_v` only within `min(r_a, r_v)`. So:
+- Against a reader at 25 or 50 km, a wide probe gains nothing. Its useful reach is still the reader's own limit. This covers the default.
+- Against a reader who chose 100 or 200 km, a wide probe covers 4 or 16 times the area of a 50 km probe. Finding that reader's rough region takes 4 to 16 times fewer probes. That is the new cheapening.
+- Changing a request's distance on its private page shows a fresh count with the same request. Without a limit, that would be a free probe.
+- A 25 km probe draws a smaller circle. That doesn't make a single probe more precise in any way that matters: the stored location is a city, and well-placed 50 km circles can already split neighboring cities. It does make searching more expensive, since each probe covers less.
+
+**Limits chosen, so probing costs at least as much as now:**
+1. **Proof-of-work scales with the area a probe covers.** Difficulty is multiplied by `max(1, (r/50)²)`: ×1 for 25 and 50 km, ×4 for 100 km, ×16 for 200 km. The useful reach of any probe is at most its own limit, so the work spent per km² searched is at least today's for every reader. The difficulty is checked at submit time against the distance actually submitted, so a cheap challenge can't be used for a wide request.
+2. **A distance change counts as a probe.** It needs its own proof-of-work at the new distance's difficulty. It counts against the same 3-per-work-per-connection-per-day budget. It is also limited to 3 changes per request per day, whatever the connection.
+3. **The per-connection budget stays at 3 probes per work per day, at any distance.** The area searchable per connection per day rises only against readers who chose 100 or 200 km, and they chose that exposure. The CPU cost per km², the binding cost for an attacker who rotates addresses, does not fall for any reader.
+4. **The distance is never public.** It isn't shown on the board, the meeting pages, or the admin page. It appears only on the request's own private page.
+
+Cost to legitimate users: a 200 km request takes about 16 times the base proof-of-work. That is a few seconds on an old phone, and the form says so.
 - **Rejoining after removal** *(review)*: the removed person's address is blocked from that meeting for 24 h (memory only).
 
 ### T2. Fake organizer luring people / malicious video link
