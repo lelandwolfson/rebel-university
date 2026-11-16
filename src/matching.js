@@ -41,8 +41,14 @@ export function unmatched(requests, distanceKm, radius = RADIUS_KM) {
   }
   const out = [];
   for (const group of byWork.values()) {
+    // Same result as checking compatible() for every pair, with less work:
+    // any two video-accepting requests match, so only in-person pairs need distances.
+    const videoMatched = group.filter(acceptsVideo).length >= 2;
+    const inPerson = group.filter(acceptsInPerson);
     for (const r of group) {
-      if (!group.some((o) => compatible(r, o, distanceKm, radius))) out.push(r);
+      if (videoMatched && acceptsVideo(r)) continue;
+      if (acceptsInPerson(r) && inPerson.some((o) => o.id !== r.id && distanceKm(r.placeId, o.placeId) <= radius)) continue;
+      out.push(r);
     }
   }
   return out;

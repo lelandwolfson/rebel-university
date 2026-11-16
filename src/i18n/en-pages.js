@@ -115,15 +115,15 @@ export function privacy(ctx) {
 <tr><td>Meetings: work, city, date, time zone, format, venue, video link, organizer note</td><td>To run the meeting</td><td>30 days after the meeting date</td></tr>
 <tr><td>Your display name in a meeting</td><td>So the people in that meeting can recognize each other</td><td>When you leave, or 30 days after the meeting</td></tr>
 <tr><td>Reports: the meeting, a reason, and optional text. Nothing about who sent it.</td><td>To handle abuse</td><td>When dismissed, or with the meeting</td></tr>
-<tr><td>Backups of the database</td><td>To recover from failure</td><td>After 7 days</td></tr>
+<tr><td>Backups of the database</td><td>To recover from failure</td><td>Within 14 days (daily backups kept 7 days, inside disk snapshots kept 7 days)</td></tr>
 </tbody>
 </table>
-<p>Times are stored rounded to the hour. Nothing links one request to another, or a request to a meeting, or a display name in one meeting to any other.</p>
+<p>Times are stored rounded to the hour, and records have random ids, so their order reveals nothing. There are no accounts, so nothing ties your requests to each other, or a display name in one meeting to any other. The database does not record which request a meeting was started from or who joined from which request. But a meeting is stored with the organizer's city and work, so where only one person has asked for a work in a city, someone holding the database could guess that they started it.</p>
 
 <h2>What we don't store</h2>
 <ul>
   <li>Your name, unless you type it as a display name.</li>
-  <li>Your IP address. To limit spam we keep short counters in memory, keyed by a scrambled form of the address that changes every day. They are never written to disk and expire within an hour.</li>
+  <li>Your IP address. To limit spam we keep short counters in memory, keyed by a scrambled form of the address that changes every day. They are never written to disk and expire within 24 hours.</li>
   <li>Logs of the pages you visit.</li>
   <li>Your birth date or any ID.</li>
 </ul>
@@ -151,7 +151,7 @@ export function privacy(ctx) {
 <p>If anyone, including a government, asks for records, this page describes everything that exists. Most of it is gone within weeks.</p>
 
 <h2>Your choices</h2>
-<p>Close a request, remove your email, or leave a meeting from your private link at any time. That deletes the data right away (and from backups within 7 days).</p>`;
+<p>Close a request, remove your email, or leave a meeting from your private link at any time. That deletes the data right away (and from backups within 14 days).</p>`;
 }
 
 export function terms() {

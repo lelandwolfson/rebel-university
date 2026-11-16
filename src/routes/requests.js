@@ -46,7 +46,8 @@ export default function register(app) {
     let error = null;
     if (q.length >= 2) {
       if (!app.limiter.hit('olsearch', ctx.ipKey, 40, 10 * 60 * 1000)) throw new HttpError(429);
-      try { results = await app.openLibrary.search(q); } catch { error = t('err.lookup'); }
+      if (!app.limiter.hit('olsearch', '*', 600, 10 * 60 * 1000)) { error = t('err.lookup'); }
+      if (!error) { try { results = await app.openLibrary.search(q); } catch { error = t('err.lookup'); } }
     }
     page(ctx, {
       title: t('request.title'),
@@ -127,6 +128,8 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
     }
 
     if (app.limiter.seen('dup', `${ctx.ipKey}|${work.id}|${placeId ?? 'online'}`, 60 * 60 * 1000)) return fail(t('err.duplicate'), 429);
+    // Posting the same work from many cities would let someone triangulate where a reader is.
+    if (!app.limiter.hit('work-per-ip', `${ctx.ipKey}|${work.id}`, 3, 24 * 3600 * 1000)) return fail(t('err.rate'), 429);
 
     const token = newToken();
     const request = store.createRequest({

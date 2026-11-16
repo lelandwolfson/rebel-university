@@ -10,10 +10,21 @@ const PAGE = 100;
 export default function register(app) {
   const { router, store, places } = app;
 
+  // The board is recomputed only when open requests changed, and at most every
+  // boardMinMs, so a flood of page views can't keep the CPU busy.
+  let cache = { version: -1, at: 0, lonely: [] };
+  function lonelyRequests() {
+    const stale = cache.version !== store.version;
+    if (stale && app.now() - cache.at >= (app.config.boardMinMs ?? 15_000)) {
+      cache = { version: store.version, at: app.now(), lonely: unmatched(store.openRequests(), app.distanceKm) };
+    }
+    return cache.lonely;
+  }
+
   // Illich's bulletin board: works with no match yet, rough area, no names.
   router.get('/board', (ctx) => {
     const { t } = ctx;
-    const lonely = unmatched(store.openRequests(), app.distanceKm);
+    const lonely = lonelyRequests();
     const byWork = new Map();
     for (const r of lonely) {
       if (!byWork.has(r.workId)) byWork.set(r.workId, { areas: new Set(), formats: new Set() });

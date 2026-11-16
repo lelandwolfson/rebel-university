@@ -26,13 +26,14 @@ export function createApp(config, { store, places, mailer, openLibrary, now = ()
     log,
     store: store || new Store(config.dbPath, { now }),
     places: places || (placesCache ||= Places.load()),
-    pow: new ProofOfWork(config.keys.pow, { now }),
+    pow: new ProofOfWork(undefined, { now }), // random key per process: no replay across restarts
     limiter: new RateLimiter({ now }),
     mailer: mailer || createMailer(config.smtp, { log }),
     openLibrary: openLibrary || new OpenLibrary(config.openLibraryUrl),
     t: translator('en'),
     router: new Router(),
     adminSessions: new Map(),
+    joinedFrom: new Map(), // attendee id -> { ipKey, until }; memory only
   };
   app.distanceKm = (a, b) => app.places.distanceKm(a, b);
   app.powDifficulty = (ipKey) => powDifficulty(app.limiter, ipKey, config.powBase);
@@ -54,6 +55,10 @@ async function handle(app, req, res) {
 
   const ctx = { app, req, res, t, params: {}, body: {}, form: new URLSearchParams() };
   try {
+    if (config.production && String(req.headers.host || '').startsWith('www.')) {
+      res.writeHead(301, { Location: config.baseUrl + (req.url.startsWith('/') ? req.url : '/') });
+      return res.end();
+    }
     if (config.trustProxy && req.headers['x-forwarded-proto'] === 'http') {
       res.writeHead(301, { Location: config.baseUrl + (req.url.startsWith('/') ? req.url : '/') });
       return res.end();
@@ -92,6 +97,7 @@ async function handle(app, req, res) {
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
     if (status === 500) log500(app, err);
+    if (status === 413 || status === 415) res.setHeader('Connection', 'close'); // don't drain an unwanted body
     if (!res.headersSent) sendError(ctx, status, err.key);
     else res.end();
   }
@@ -133,7 +139,8 @@ export function checkForm(ctx, { pow = false } = {}) {
   if (!ctx.csrfValid) return why(`csrf (fresh=${!!ctx.csrfFresh} origin=${ctx.req.headers.origin || '-'})`);
   if (!pow) return null;
   if (ctx.body.website) return why('honeypot');
-  const r = app.pow.verify(ctx.body.pow);
+  // Difficulty may rise between page load and submit; allow 4x slack, no more.
+  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax: Math.floor(app.powDifficulty(ctx.ipKey) / 4) });
   if (!r.ok) return why(`pow ${r.reason}`);
   if (app.now() - r.issued < app.config.minFormMs) return t('err.tooFast');
   return null;

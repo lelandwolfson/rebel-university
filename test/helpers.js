@@ -14,7 +14,7 @@ export const BOOKS = [
 
 export async function startTestServer({ overrides = {}, now } = {}) {
   const config = loadConfig({ NODE_ENV: 'test' }, {
-    adminSecret: ADMIN_SECRET, minFormMs: 0, powBase: 200, jobs: false, ...overrides,
+    adminSecret: ADMIN_SECRET, minFormMs: 0, powBase: 200, jobs: false, boardMinMs: 0, ...overrides,
   });
   const clock = now || (() => Date.now());
   const store = new Store(':memory:', { now: clock });

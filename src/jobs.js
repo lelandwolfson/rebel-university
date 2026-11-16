@@ -10,6 +10,7 @@ export function runCleanup(app) {
   app.pow.sweep();
   app.limiter.sweep();
   for (const [k, exp] of app.adminSessions) if (exp < app.now()) app.adminSessions.delete(k);
+  for (const [k, v] of app.joinedFrom || []) if (v.until < app.now()) app.joinedFrom.delete(k);
   return r;
 }
 

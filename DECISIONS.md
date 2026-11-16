@@ -38,7 +38,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 
 **D-18. Proof-of-work is built in, ALTCHA-style.** A ~2 KB script brute-forces a SHA-256 preimage from a server-signed challenge. Same scheme as ALTCHA, no dependency. Forms need JavaScript to submit; a `<noscript>` note explains why.
 
-**D-19. Removed attendees can rejoin under a new name.** Blocking them would require tracking a person across visits. The organizer can close the meeting to new people instead. Accepted risk.
+**D-19. Removal sticks for 24 hours, from memory only.** The adversarial review showed removed attendees rejoined at once. We keep each new attendee's hashed IP key in memory for 24 hours, so a removal blocks that address from rejoining that meeting. Nothing is written to disk. A person on a shared address (library wifi) can be caught by it; the organizer can close the meeting instead if needed.
 
 **D-20. Reports carry no reporter identity.** A report holds a reason and up to 500 characters of text, with URLs stripped.
 
@@ -54,3 +54,9 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-24. Request expiry is a delete, not a status.** Nothing is kept once a request is closed or expired.
 
 **D-25. Report reasons.** "Unsafe or suspicious meeting", "Spam", "Someone may be under 18", "Other".
+
+**D-26. Proof-of-work key is random per process.** A restart (each deploy) invalidates open forms' challenges; the form simply asks again. In exchange, no solution can be replayed after a restart.
+
+**D-27. Random row ids.** Sequential ids would reveal posting order and totals, undoing the hour-rounding of timestamps.
+
+**D-28. www redirects to the bare domain** in production.

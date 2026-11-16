@@ -6,7 +6,7 @@ import { startJobs } from './jobs.js';
 const config = loadConfig();
 const app = createApp(config);
 
-const server = http.createServer({ requestTimeout: 15_000, headersTimeout: 10_000, maxHeaderSize: 16 * 1024 }, app.handle);
+const server = http.createServer({ requestTimeout: 10_000, headersTimeout: 8_000, maxHeaderSize: 16 * 1024 }, app.handle);
 server.keepAliveTimeout = 5_000;
 server.maxRequestsPerSocket = 200;
 

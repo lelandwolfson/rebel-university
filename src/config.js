@@ -40,7 +40,6 @@ export function loadConfig(env = process.env, overrides = {}) {
     keys: {
       email: Buffer.from(key('email-encryption-v1')),
       sign: Buffer.from(key('signing-v1')),
-      pow: Buffer.from(key('proof-of-work-v1')),
     },
     smtp,
     securityContact: env.SECURITY_CONTACT || 'https://github.com/lelandwolfson/rebel-university/security/advisories/new',

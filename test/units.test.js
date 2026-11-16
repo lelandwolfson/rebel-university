@@ -23,7 +23,7 @@ test('html escapes interpolations by default', () => {
 });
 
 test('clean strips control characters, URLs, and caps length', () => {
-  assert.equal(clean('a\u0000b‮c', 10), 'a b c');
+  assert.equal(clean('a\u0000b\u202ec', 10), 'a b c');
   assert.equal(clean('see https://spam.example/x now', 100), 'see now');
   assert.equal(clean('visit www.spam.biz today', 100), 'visit today');
   assert.equal(clean('buy at spam.com/pills', 100), 'buy at');
@@ -97,25 +97,43 @@ export function solvePow(ch) {
 test('proof of work verifies, rejects replay, forgery, and expiry', () => {
   let now = 1_000_000;
   const pow = new ProofOfWork(key, { now: () => now });
-  const ch = pow.create(500);
+  const ch = pow.create(500, 'ipA');
   const sol = solvePow(ch);
-  assert.equal(pow.verify(sol).ok, true);
-  assert.equal(pow.verify(sol).reason, 'replay');
+  assert.equal(pow.verify(sol, { ipKey: 'ipA' }).ok, true);
+  assert.equal(pow.verify(sol, { ipKey: 'ipA' }).reason, 'replay');
 
-  const ch2 = pow.create(500);
+  const ch2 = pow.create(500, 'ipA');
   const p = JSON.parse(Buffer.from(solvePow(ch2), 'base64').toString());
-  const tamperedSalt = Buffer.from(JSON.stringify({ ...p, salt: p.salt.replace(/i=\d+/, 'i=0') })).toString('base64');
-  assert.equal(pow.verify(tamperedSalt).ok, false);
-  const wrongNumber = Buffer.from(JSON.stringify({ ...p, number: p.number + 1 })).toString('base64');
-  assert.equal(pow.verify(wrongNumber).ok, false);
+  const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64');
+  assert.equal(pow.verify(enc({ ...p, salt: p.salt.replace(/i=\d+/, 'i=0') }), { ipKey: 'ipA' }).ok, false);
+  assert.equal(pow.verify(enc({ ...p, number: p.number + 1 }), { ipKey: 'ipA' }).ok, false);
   const otherKey = new ProofOfWork(crypto.randomBytes(32), { now: () => now });
-  assert.equal(otherKey.verify(solvePow(ch2)).reason, 'signature');
+  assert.equal(otherKey.verify(solvePow(ch2), { ipKey: 'ipA' }).reason, 'signature', 'a restart (new key) invalidates old solutions');
 
-  const ch3 = pow.create(10);
-  now += 3 * 3600 * 1000;
-  assert.equal(pow.verify(solvePow(ch3)).reason, 'expired');
+  const ch3 = pow.create(10, 'ipA');
+  now += 2 * 3600 * 1000;
+  assert.equal(pow.verify(solvePow(ch3), { ipKey: 'ipA' }).reason, 'expired');
   assert.equal(pow.verify('garbage').ok, false);
   assert.equal(pow.verify(undefined).ok, false);
+});
+
+test('proof of work: review finding 3, digits moved from number into the expiry are rejected', () => {
+  const pow = new ProofOfWork(key);
+  // Find a challenge whose answer has 2+ digits, then shift its first digits into the salt.
+  let ch, p;
+  do { ch = pow.create(5000, 'ip'); p = JSON.parse(Buffer.from(solvePow(ch), 'base64').toString()); } while (p.number < 100);
+  const s = String(p.number);
+  // Move all but the last digit to the end of the salt (after &k=..., or for the old format after &e=).
+  const forged = { ...p, salt: p.salt + s.slice(0, -1), number: Number(s.slice(-1)) };
+  assert.equal(crypto.createHash('sha256').update(forged.salt + forged.number).digest('hex'), p.challenge, 'hash still matches');
+  assert.equal(pow.verify(Buffer.from(JSON.stringify(forged)).toString('base64'), { ipKey: 'ip' }).ok, false);
+});
+
+test('proof of work: review finding 2, challenges are bound to the IP and to the current difficulty', () => {
+  const pow = new ProofOfWork(key);
+  assert.equal(pow.verify(solvePow(pow.create(100, 'ipA')), { ipKey: 'ipB' }).reason, 'ip');
+  assert.equal(pow.verify(solvePow(pow.create(100, 'ipA')), { ipKey: 'ipA', minMax: 400 }).reason, 'difficulty');
+  assert.equal(pow.verify(solvePow(pow.create(400, 'ipA')), { ipKey: 'ipA', minMax: 400 }).ok, true);
 });
 
 test('proof of work difficulty rises per IP and site-wide', () => {
@@ -186,4 +204,58 @@ test('store cleanup deletes expired requests, old meetings, and orphan works', (
   assert.equal(r.works, 1);
   assert.equal(store.getWork(w.id), undefined);
   store.close();
+});
+
+test('review finding 4: IPv6 addresses share a limit per /64, IPv4 per address', async () => {
+  const { ipBucket } = await import('../src/ratelimit.js');
+  assert.equal(ipBucket('2001:db8:1:2:aaaa::1'), ipBucket('2001:db8:1:2:bbbb:cccc:dddd:eeee'));
+  assert.notEqual(ipBucket('2001:db8:1:2::1'), ipBucket('2001:db8:1:3::1'));
+  assert.equal(ipBucket('2001:db8::1'), '2001:db8:0:0::/64');
+  assert.equal(ipBucket('::ffff:1.2.3.4'), '1.2.3.4');
+  assert.notEqual(ipBucket('1.2.3.4'), ipBucket('1.2.3.5'));
+  const lim = new RateLimiter();
+  assert.equal(lim.ipHash('2001:db8:1:2::1'), lim.ipHash('2001:db8:1:2:ffff::9'));
+});
+
+test('review finding 4: X-Forwarded-For is never trusted; Fly-Client-IP only behind the proxy', async () => {
+  const { clientIp } = await import('../src/http.js');
+  const req = (headers) => ({ headers, socket: { remoteAddress: '10.0.0.1' } });
+  assert.equal(clientIp(req({ 'x-forwarded-for': '6.6.6.6' }), true), '10.0.0.1');
+  assert.equal(clientIp(req({ 'fly-client-ip': '7.7.7.7' }), true), '7.7.7.7');
+  assert.equal(clientIp(req({ 'fly-client-ip': '7.7.7.7' }), false), '10.0.0.1');
+});
+
+test('review finding 4: limiter memory stays bounded under address rotation', () => {
+  const lim = new RateLimiter();
+  for (let i = 0; i < 230_000; i++) lim.hit('req', `k${i}`, 10, 60_000);
+  assert.ok(lim.windows.size <= 200_000);
+});
+
+test('review finding 7: unmatched() agrees with pairwise compatible() on random data', async () => {
+  const { unmatched, compatible } = await import('../src/matching.js');
+  const places = Places.load();
+  const dist = (a, b) => places.distanceKm(a, b);
+  const spots = [5746545, 5713376, 4975802, 2988507, null];
+  const fmts = ['in_person', 'video', 'either'];
+  let seed = 7;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) % 2 ** 31; return seed % n; };
+  for (let round = 0; round < 50; round++) {
+    const reqs = Array.from({ length: 12 }, (_, i) => {
+      const p = spots[rnd(spots.length)];
+      return { id: i + 1, workId: rnd(3), placeId: p, onlineOnly: p == null, format: p == null ? 'video' : fmts[rnd(3)] };
+    });
+    const brute = reqs.filter((r) => !reqs.some((o) => compatible(r, o, dist))).map((r) => r.id);
+    assert.deepEqual(unmatched(reqs, dist).map((r) => r.id).sort(), brute.sort());
+  }
+});
+
+test('review finding 11: Open Library responses over 2 MB are refused while streaming', async () => {
+  const { OpenLibrary } = await import('../src/works.js');
+  const big = new ReadableStream({ start(c) { for (let i = 0; i < 30; i++) c.enqueue(new Uint8Array(100_000)); c.close(); } });
+  const ol = new OpenLibrary('https://x.invalid', { fetchImpl: async () => new Response(big) });
+  await assert.rejects(ol.search('anything'), /too large/);
+});
+
+test('review finding 12: obfuscated and internationalized links are stripped', () => {
+  for (const s of ['evil。com', 'evil．com', 'пример.рф', 'evil . com', 'evil[.]com', 'evil(dot)com']) assert.equal(clean(`go ${s} now`, 100), 'go now', s);
 });

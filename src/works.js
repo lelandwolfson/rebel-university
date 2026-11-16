@@ -33,9 +33,14 @@ export class OpenLibrary {
     const url = `${this.baseUrl}/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,first_publish_year&limit=12`;
     const res = await this.fetch(url, { headers: { 'User-Agent': this.userAgent, Accept: 'application/json' }, signal: AbortSignal.timeout(6000), redirect: 'error' });
     if (!res.ok) throw new Error(`Open Library returned ${res.status}`);
-    const text = await res.text();
-    if (text.length > 2_000_000) throw new Error('Open Library response too large');
-    const data = JSON.parse(text);
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of res.body) {
+      size += chunk.length;
+      if (size > 2_000_000) throw new Error('Open Library response too large');
+      chunks.push(chunk);
+    }
+    const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     const results = [];
     for (const d of Array.isArray(data.docs) ? data.docs : []) {
       const olKey = typeof d.key === 'string' ? d.key.replace(/^\/works\//, '') : '';

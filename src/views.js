@@ -60,7 +60,7 @@ export function noticeBox(msg) {
 export function guard(ctx, { pow = false } = {}) {
   const parts = [html`<input type="hidden" name="_csrf" value="${ctx.csrf}">`];
   if (pow) {
-    const challenge = ctx.app.pow.create(ctx.app.powDifficulty(ctx.ipKey));
+    const challenge = ctx.app.pow.create(ctx.app.powDifficulty(ctx.ipKey), ctx.ipKey);
     parts.push(html`<div class="hp" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
 <input type="hidden" name="pow" value="" data-challenge="${JSON.stringify(challenge)}">
 <noscript><p class="error">${ctx.t('pow.noscript')}</p></noscript>`);

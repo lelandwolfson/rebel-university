@@ -71,9 +71,9 @@ export function cookieString(name, value, { secure, maxAge, sameSite = 'Lax' } =
 export function readBody(req, limit = 16 * 1024) {
   return new Promise((resolve, reject) => {
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (type !== 'application/x-www-form-urlencoded') { req.resume(); return reject(new HttpError(415)); }
+    if (type !== 'application/x-www-form-urlencoded') return reject(new HttpError(415));
     const declared = Number(req.headers['content-length'] || 0);
-    if (declared > limit) { req.resume(); return reject(new HttpError(413)); }
+    if (declared > limit) return reject(new HttpError(413));
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
@@ -88,10 +88,10 @@ export function readBody(req, limit = 16 * 1024) {
 
 export function clientIp(req, trustProxy) {
   if (trustProxy) {
+    // Only Fly's edge header: Fly sets it on every request and clients can't
+    // override it there. X-Forwarded-For is client-controlled, so it is ignored.
     const fly = req.headers['fly-client-ip'];
     if (typeof fly === 'string' && fly) return fly.trim();
-    const xff = req.headers['x-forwarded-for'];
-    if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
   }
   return req.socket.remoteAddress || 'unknown';
 }

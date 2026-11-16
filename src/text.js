@@ -1,13 +1,18 @@
 // Input cleaning. Every user-entered string goes through clean().
 
-const CONTROL = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 const URLISH = [
   /\b[a-z][a-z0-9+.-]*:\/\/\S*/gi, // scheme://...
   /\bwww\.\S*/gi,
-  /\b[\w.+-]+@[\w-]+(\.[\w-]+)+\b/gi, // email addresses
-  /\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}\b(\/\S*)?/gi, // bare domains like example.com/x
+  /[\p{L}\p{N}._+-]+@[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+/giu, // email addresses
+  // bare domains, including internationalized ones: example.com/x, пример.рф
+  /(?<![\p{L}\p{N}_-])[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)*\.\p{L}{2,24}(?![\p{L}\p{N}_-])(\/\S*)?/giu,
+  // obfuscated: evil[.]com, evil(dot)com, evil . com
+  /[\p{L}\p{N}-]+\s*(\[\.\]|\(\.\)|\[dot\]|\(dot\)|\s\.\s)\s*\p{L}{2,24}\b/giu,
   /\b(?:mailto|javascript|data):\S*/gi,
 ];
+// Characters browsers treat as a dot in host names.
+const DOTS = /[\u3002\uff0e\uff61\u2024\ufe52]/g;
 
 export function stripUrls(s) {
   let out = s;
@@ -18,6 +23,7 @@ export function stripUrls(s) {
 export function clean(value, max, { keepUrls = false } = {}) {
   if (typeof value !== 'string') return '';
   let s = value.normalize('NFC').replace(CONTROL, ' ');
+  if (!keepUrls) s = s.normalize('NFKC').replace(DOTS, '.');
   if (!keepUrls) s = stripUrls(s);
   s = s.replace(/\s+/g, ' ').trim();
   return [...s].slice(0, max).join('').trim();

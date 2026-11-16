@@ -187,13 +187,18 @@ ${powScript()}`}
     const err = checkForm(ctx, { pow: true });
     if (err) return publicMeetingPage(ctx, m, { error: err, name, status: 400 });
     if (!allowWrite(ctx, 'join', 30)) return publicMeetingPage(ctx, m, { error: ctx.t('err.rate'), name, status: 429 });
+    if (app.limiter.count('kicked', `${m.id}|${ctx.ipKey}`) > 0 || !app.limiter.hit('join-meeting', `${m.id}|${ctx.ipKey}`, 3, 24 * 3600 * 1000)) {
+      return publicMeetingPage(ctx, m, { error: 'You cannot join this meeting again from here.', name, status: 429 });
+    }
     if (m.status !== 'open' || m.startsUtc < app.now() - 3600 * 1000 || store.attendeeCount(m.id) >= MAX_ATTENDEES) {
       return publicMeetingPage(ctx, m, { status: 409 });
     }
     const display = clean(name, 40);
     if (!display) return publicMeetingPage(ctx, m, { error: 'Please choose a name for this meeting.', name, status: 400 });
     const token = newToken();
-    store.addAttendee(m.id, hashToken(token), display);
+    const attendeeId = store.addAttendee(m.id, hashToken(token), display);
+    // Memory only, for 24 hours: lets an organizer's removal stick.
+    app.joinedFrom.set(attendeeId, { ipKey: ctx.ipKey, until: app.now() + 24 * 3600 * 1000 });
     app.recordWrite(ctx.ipKey);
     redirect(ctx, `/a/${token}?new=1`);
   });
@@ -350,7 +355,11 @@ ${tips(ctx, { bring: inPerson })}
   router.post('/a/:token/remove', async (ctx) => {
     const d = await organizerOnly(ctx);
     const id = Number(ctx.body.attendee);
-    if (Number.isInteger(id)) store.removeAttendee(d.m.id, id);
+    if (Number.isInteger(id) && store.removeAttendee(d.m.id, id)) {
+      const from = app.joinedFrom.get(id);
+      if (from) app.limiter.seen('kicked', `${d.m.id}|${from.ipKey}`, 24 * 3600 * 1000);
+      app.joinedFrom.delete(id);
+    }
     redirect(ctx, `/a/${d.token}`);
   });
 }

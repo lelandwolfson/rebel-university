@@ -339,3 +339,68 @@ test('static pages exist and security.txt is valid', async () => {
   assert.equal((await c.get('/static/../src/config.js')).status, 404);
   assert.equal((await c.get('/static/%2e%2e%2fpackage.json')).status, 404);
 });
+
+test('review finding 5: a later request cannot attach a link to an existing work', async () => {
+  const c = new Client(s.base);
+  const r1 = await c.submit('/request/new/details?manual=1&place_q=paris', '/request', {
+    kind: 'film', title: 'Stalker', creator: 'Andrei Tarkovsky', place: PARIS, format: 'video',
+  });
+  assert.equal(r1.status, 303);
+  const d = new Client(s.base);
+  const r2 = await d.submit('/request/new/details?manual=1&place_q=portland', '/request', {
+    kind: 'film', title: 'the STALKER!', creator: 'andrei tarkovsky', link: 'https://phish.example/login', place: PORTLAND, format: 'video',
+  });
+  assert.equal(r2.status, 303);
+  const w = s.store.db.prepare("SELECT link FROM works WHERE title = 'Stalker'").get();
+  assert.equal(w.link, null);
+});
+
+test('review finding 6: one connection cannot probe a work from many cities', async () => {
+  const c = new Client(s.base);
+  const search = await c.get('/request/new?q=oppressed');
+  const href = decodeEntities(/href="(\/request\/new\/details\?w=[^"]+)"/.exec(search.text)[1]);
+  // This IP already posted this work earlier in the suite; keep posting from new cities until refused.
+  const cities = [['berlin', '2950159'], ['madrid', '3117735'], ['rome', '3169070'], ['tokyo', '1850147']];
+  const statuses = [];
+  for (const [q, id] of cities) statuses.push((await c.submit(`${href}&place_q=${q}`, '/request', { place: id, format: 'in_person' })).status);
+  assert.ok(statuses.includes(429), statuses.join(','));
+});
+
+test('review finding 8: an attendee removed by the organizer cannot rejoin from the same address', async () => {
+  const s = await startTestServer();
+  try {
+  const org = new Client(s.base);
+  const posted = await org.submit('/request/new/details?manual=1', '/request', {
+    kind: 'book', title: 'Ways of Seeing', creator: 'John Berger', place: 'online', format: 'video',
+  });
+  assert.equal(posted.status, 303, posted.text.slice(0, 1500));
+  const tok = /^\/r\/([A-Za-z0-9_-]{43})/.exec(posted.location)[1];
+  const res = await org.submit(`/r/${tok}/meet`, `/r/${tok}/meet`, {
+    date: tomorrow(), time: '18:00', tz: 'Europe/Paris', format: 'video', video_url: 'https://meet.jit.si/rebel-test', name: 'Org',
+  });
+  assert.equal(res.status, 303, res.text.slice(0, 2000));
+  const orgToken = /^\/a\/([A-Za-z0-9_-]{43})/.exec(res.location)[1];
+  const mid = /href="\/m\/([A-Za-z0-9_-]{12})\/report"/.exec((await org.get(`/a/${orgToken}`)).text)[1];
+  const troll = new Client(s.base);
+  assert.equal((await troll.submit(`/m/${mid}`, `/m/${mid}/join`, { name: 'Troll' })).status, 303);
+  const page = await org.get(`/a/${orgToken}`);
+  const attendeeId = /name="attendee" value="(\d+)"/.exec(page.text)[1];
+  assert.ok(Number(attendeeId) > 1000, 'attendee ids are random, not a site-wide counter');
+  await org.submit(`/a/${orgToken}`, `/a/${orgToken}/remove`, { attendee: attendeeId }, { page });
+  const again = await troll.submit(`/m/${mid}`, `/m/${mid}/join`, { name: 'Troll2' });
+  assert.equal(again.status, 429);
+  } finally { await s.close(); }
+});
+
+test('review finding 1: login spam from one address does not lock out the admin elsewhere', async () => {
+  const t = await startTestServer({ overrides: { trustProxy: true } });
+  try {
+    const spam = new Client(t.base);
+    for (let i = 0; i < 40; i++) await spam.request('POST', '/admin/login', { secret: 'x' }, { 'Fly-Client-IP': '6.6.6.6' });
+    const admin = new Client(t.base);
+    const p = await admin.request('GET', '/admin', null, { 'Fly-Client-IP': '8.8.4.4' });
+    const csrf = /name="_csrf" value="([^"]+)"/.exec(p.text)[1];
+    const r = await admin.request('POST', '/admin/login', { _csrf: csrf, secret: ADMIN_SECRET }, { 'Fly-Client-IP': '8.8.4.4' });
+    assert.equal(r.status, 303);
+  } finally { await t.close(); }
+});

@@ -1,4 +1,22 @@
 import crypto from 'node:crypto';
+import net from 'node:net';
+
+const MAX_KEYS = 200_000;
+
+// IPv6 users (and attackers) usually control a whole /64, so limits apply to the /64.
+export function ipBucket(ip) {
+  let s = String(ip || '').trim();
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(s);
+  if (mapped) s = mapped[1];
+  if (!net.isIPv6(s)) return s;
+  s = s.split('%')[0];
+  let [head, tail] = s.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined && tail ? tail.split(':') : [];
+  if (t.length && t[t.length - 1].includes('.')) t.splice(-1, 1, '0', '0'); // embedded IPv4 in the low bits
+  const groups = tail === undefined ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
+  return `${groups.slice(0, 4).map((g) => parseInt(g || '0', 16).toString(16)).join(':')}::/64`;
+}
 
 // Fixed-window counters held only in memory. Keys are HMACs of the IP with a
 // random key that lives in memory and rotates every 24 hours, so nothing here
@@ -17,7 +35,7 @@ export class RateLimiter {
 
   ipHash(ip) {
     if (this.now() - this.rotatedAt > 24 * 3600 * 1000) this.rotate();
-    return crypto.createHmac('sha256', this.ipKey).update(String(ip)).digest('base64url').slice(0, 22);
+    return crypto.createHmac('sha256', this.ipKey).update(ipBucket(ip)).digest('base64url').slice(0, 22);
   }
 
   // Count one hit. Returns true if still within the limit.
@@ -26,6 +44,7 @@ export class RateLimiter {
     const t = this.now();
     let w = this.windows.get(k);
     if (!w || w.reset <= t) {
+      this.makeRoom();
       w = { count: 0, reset: t + windowMs };
       this.windows.set(k, w);
     }
@@ -44,8 +63,18 @@ export class RateLimiter {
     const t = this.now();
     const w = this.windows.get(k);
     if (w && w.reset > t) return true;
+    this.makeRoom();
     this.windows.set(k, { count: 1, reset: t + windowMs });
     return false;
+  }
+
+  // Bound memory under an address-rotation flood: drop expired, then the oldest.
+  makeRoom() {
+    if (this.windows.size < MAX_KEYS) return;
+    this.sweep();
+    if (this.windows.size < MAX_KEYS) return;
+    let drop = Math.ceil(MAX_KEYS / 10);
+    for (const k of this.windows.keys()) { if (drop-- <= 0) break; this.windows.delete(k); }
   }
 
   sweep() {

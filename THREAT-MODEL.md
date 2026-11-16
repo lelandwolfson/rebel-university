@@ -1,6 +1,6 @@
 # Threat model
 
-Written before the code. Updated after the adversarial review (see SECURITY-REVIEW.md).
+Written before the code. Updated after the adversarial review; changes are marked *(review)*. See SECURITY-REVIEW.md.
 
 ## What we protect
 
@@ -19,10 +19,10 @@ Written before the code. Updated after the adversarial review (see SECURITY-REVI
 | Optional email | DB | Tell the person a match exists | AES-256-GCM encrypted with a key from the environment. Deleted when the request closes or expires. |
 | Display name per meeting | DB | Recognition inside one meeting | Shown only to joined attendees. Not linked to anything else. Deleted 30 days after the meeting. |
 | Venue, video link, organizer note | DB | Running the meeting | Shown only to joined attendees. Deleted 30 days after the meeting. |
-| IP address | Memory only | Rate limiting and proof-of-work difficulty | HMAC'd with a key that lives in memory and rotates daily. Never written to disk. Counters expire within an hour. |
+| IP address | Memory only | Rate limiting and proof-of-work difficulty | HMAC'd (IPv4 per address, IPv6 per /64) with a key that lives in memory and rotates daily. Never written to disk. Counters expire within 24 hours. |
 | Reports | DB | Abuse handling | Admin only. Deleted with the meeting. |
 | Admin audit log | DB | Accountability | No IPs. Pruned after 180 days. |
-| Timestamps | DB | Expiry | Rounded to the hour to blur timing correlation. |
+| Timestamps | DB | Expiry | Rounded to the hour to blur timing correlation. Row ids are random so order doesn't leak either *(review)*. |
 
 A full leak gives an attacker: a list of works people want to discuss, rough cities, meeting venues and times for the next month, and some display names. No names, no accounts, no IPs, no emails (unless they also have the key), and nothing linking two requests or two meetings to the same person.
 
@@ -43,7 +43,8 @@ A full leak gives an attacker: a list of works people want to discuss, rough cit
 - **Joining meetings to learn venues.** Anyone can join any meeting; that is the design (Illich: open to anyone). Mitigation: venue is a public place (guidance), the organizer can remove attendees and close the meeting, meetings are deleted after 30 days, there is no way to see which meetings a person attended. **Accepted risk**, stated in the "How to meet" page.
 - **Watching the open board.** Board shows only work + region/country (not city) + format. No dates, counts per city, or names.
 - **Linking a display name across meetings.** Display names are free-form per meeting; there is no user id; nothing in the DB links two attendee rows. A person who reuses a distinctive name links themselves; the join form suggests not reusing names.
-- **Watching a request's match count** to infer when someone new posts. Count only, on a private page that requires your own request. Low value.
+- **Watching a request's match count** to infer when someone new posts, or posting probes from several cities to triangulate a reader *(review)*. Limited to 3 requests per work per connection per day, plus PoW and posting limits. Residual risk accepted (SECURITY-REVIEW.md).
+- **Rejoining after removal** *(review)*: the removed person's address is blocked from that meeting for 24 h (memory only).
 
 ### T2. Fake organizer luring people / malicious video link
 - Guidance everywhere: public places, daytime, leave whenever you want, never a private home.
@@ -67,7 +68,7 @@ A full leak gives an attacker: a list of works people want to discuss, rough cit
 
 ### T5. Admin takeover
 - Admin is disabled unless `ADMIN_SECRET` (≥ 32 chars) is set.
-- Constant-time comparison; login rate limited per IP and globally; random session id stored hashed in memory, 2 hour lifetime, `HttpOnly; Secure; SameSite=Strict` cookie; CSRF on every admin action.
+- Constant-time comparison; login rate limited per IP only, after the CSRF check (a global cap let one IP lock the admin out) *(review)*; random session id stored hashed in memory, 2 hour lifetime, `HttpOnly; Secure; SameSite=Strict` cookie; CSRF on every admin action.
 - Audit log of every admin action.
 
 ### T6. Scraping to build a record
@@ -77,8 +78,10 @@ A full leak gives an attacker: a list of works people want to discuss, rough cit
 - `robots.txt` disallows meeting and board pages (polite crawlers only).
 
 ### T7. Floods and DoS
-- Proof-of-work on every write (adaptive per IP and site-wide).
-- Honeypot field and minimum fill time.
+- Proof-of-work on every write (adaptive per IP and site-wide). Challenges are bound to the client and the current difficulty, signed over salt and challenge, and the key is per process *(review)*.
+- Honeypot field and minimum fill time (these only stop naive bots; not counted on) *(review)*.
+- Client IP taken only from Fly's edge header; IPv6 limited per /64; limiter memory capped *(review)*.
+- `/board` cached and recomputed at most every 15 s *(review)*.
 - Per-IP rate limits; per-link rate limits.
 - Duplicate detection (same IP + work + place within an hour).
 - Body size limit (16 KB), header/request timeouts.

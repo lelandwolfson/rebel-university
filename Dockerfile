@@ -3,8 +3,7 @@ FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64
 
 ENV NODE_ENV=production \
     DATA_DIR=/data \
-    PORT=8080 \
-    TRUST_PROXY=true
+    PORT=8080
 
 WORKDIR /app
 COPY package.json package-lock.json ./

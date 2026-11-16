@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+
+// Random row ids: sequential ids would reveal posting order and site-wide counts.
+const rid = () => crypto.randomInt(1, 2 ** 47);
 
 // All SQL lives here. Every query is parameterized.
 
@@ -97,6 +101,7 @@ export class Store {
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA secure_delete = ON;');
     this.db.exec(SCHEMA);
     this.q = new Map();
+    this.version = 0; // bumps whenever open requests change (board cache)
   }
 
   sql(s) {
@@ -129,34 +134,36 @@ export class Store {
 
   findOrCreateWork({ kind, olKey = null, title, creator = '', link = null, normKey, held = false }) {
     const existing = this.sql('SELECT * FROM works WHERE norm_key = ?').get(normKey);
-    if (existing) {
-      if (!existing.link && link) this.sql('UPDATE works SET link = ? WHERE id = ?').run(link, existing.id);
-      return toWork(this.sql('SELECT * FROM works WHERE id = ?').get(existing.id));
-    }
-    const r = this.sql('INSERT INTO works (kind, ol_key, title, creator, link, norm_key, held, created_hour) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(kind, olKey, title, creator, link, normKey, held ? 1 : 0, this.hour());
-    return this.getWork(Number(r.lastInsertRowid));
+    // An existing work is never changed by a later request (its link could be swapped for a phishing link).
+    if (existing) return toWork(existing);
+    const id = rid();
+    this.sql('INSERT INTO works (id, kind, ol_key, title, creator, link, norm_key, held, created_hour) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, kind, olKey, title, creator, link, normKey, held ? 1 : 0, this.hour());
+    return this.getWork(id);
   }
 
   heldWorks() {
-    return this.sql('SELECT * FROM works WHERE held = 1 ORDER BY id DESC LIMIT 200').all().map(toWork);
+    return this.sql('SELECT * FROM works WHERE held = 1 ORDER BY created_hour DESC LIMIT 200').all().map(toWork);
   }
 
   approveWork(id) {
+    this.version++;
     return this.tx(() => {
       this.sql('UPDATE works SET held = 0 WHERE id = ?').run(id);
       this.sql("UPDATE requests SET status = 'open' WHERE work_id = ? AND status = 'held'").run(id);
     });
   }
 
-  deleteWork(id) { return this.sql('DELETE FROM works WHERE id = ?').run(id).changes; }
+  deleteWork(id) { this.version++; return this.sql('DELETE FROM works WHERE id = ?').run(id).changes; }
 
   // ---- requests
   createRequest({ tokenHash, workId, placeId, onlineOnly, format, emailEnc, status }) {
     const h = this.hour();
-    const r = this.sql(`INSERT INTO requests (token_hash, work_id, place_id, online_only, format, email_enc, status, created_hour, expires_hour)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(tokenHash, workId, placeId ?? null, onlineOnly ? 1 : 0, format, emailEnc ?? null, status, h, h + 90 * 24);
-    return this.getRequest(Number(r.lastInsertRowid));
+    const id = rid();
+    this.version++;
+    this.sql(`INSERT INTO requests (id, token_hash, work_id, place_id, online_only, format, email_enc, status, created_hour, expires_hour)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, tokenHash, workId, placeId ?? null, onlineOnly ? 1 : 0, format, emailEnc ?? null, status, h, h + 90 * 24);
+    return this.getRequest(id);
   }
   getRequest(id) { return toRequest(this.sql('SELECT * FROM requests WHERE id = ?').get(id)); }
   requestByToken(tokenHash) { return toRequest(this.sql('SELECT * FROM requests WHERE token_hash = ?').get(tokenHash)); }
@@ -164,12 +171,12 @@ export class Store {
     return this.sql("SELECT * FROM requests WHERE work_id = ? AND status = 'open'").all(workId).map(toRequest);
   }
   openRequests() { return this.sql("SELECT * FROM requests WHERE status = 'open'").all().map(toRequest); }
-  deleteRequest(id) { return this.sql('DELETE FROM requests WHERE id = ?').run(id).changes; }
+  deleteRequest(id) { this.version++; return this.sql('DELETE FROM requests WHERE id = ?').run(id).changes; }
   clearRequestEmail(id) { this.sql('UPDATE requests SET email_enc = NULL WHERE id = ?').run(id); }
   markNotified(id) { this.sql('UPDATE requests SET last_notified_hour = ? WHERE id = ?').run(this.hour(), id); }
   recentRequests(limit = 200) {
     return this.sql(`SELECT r.*, w.title, w.creator, w.kind FROM requests r JOIN works w ON w.id = r.work_id
-      ORDER BY r.id DESC LIMIT ?`).all(limit).map((r) => ({ ...toRequest(r), title: r.title, creator: r.creator, kind: r.kind }));
+      ORDER BY r.created_hour DESC LIMIT ?`).all(limit).map((r) => ({ ...toRequest(r), title: r.title, creator: r.creator, kind: r.kind }));
   }
   workSummary() {
     return this.sql(`SELECT w.*, COUNT(r.id) AS n FROM works w JOIN requests r ON r.work_id = w.id
@@ -182,7 +189,7 @@ export class Store {
     return this.tx(() => {
       this.sql(`INSERT INTO meetings (id, work_id, place_id, format, starts_utc, tz, venue, video_url, note, status, created_hour, delete_after_hour)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`).run(id, workId, placeId ?? null, format, startsUtc, tz, venue, videoUrl, note, h, toHour(startsUtc) + 30 * 24);
-      this.sql('INSERT INTO attendees (meeting_id, token_hash, display_name, is_organizer) VALUES (?, ?, ?, 1)').run(id, organizerTokenHash, organizerName);
+      this.sql('INSERT INTO attendees (id, meeting_id, token_hash, display_name, is_organizer) VALUES (?, ?, ?, ?, 1)').run(rid(), id, organizerTokenHash, organizerName);
       return this.getMeeting(id);
     });
   }
@@ -208,15 +215,16 @@ export class Store {
 
   // ---- attendees
   addAttendee(meetingId, tokenHash, displayName) {
-    return Number(this.sql('INSERT INTO attendees (meeting_id, token_hash, display_name, is_organizer) VALUES (?, ?, ?, 0)')
-      .run(meetingId, tokenHash, displayName).lastInsertRowid);
+    const id = rid();
+    this.sql('INSERT INTO attendees (id, meeting_id, token_hash, display_name, is_organizer) VALUES (?, ?, ?, ?, 0)').run(id, meetingId, tokenHash, displayName);
+    return id;
   }
   attendeeByToken(tokenHash) {
     const a = this.sql('SELECT * FROM attendees WHERE token_hash = ?').get(tokenHash);
     return a && { id: a.id, meetingId: a.meeting_id, displayName: a.display_name, isOrganizer: !!a.is_organizer };
   }
   attendees(meetingId) {
-    return this.sql('SELECT id, display_name, is_organizer FROM attendees WHERE meeting_id = ? ORDER BY is_organizer DESC, id').all(meetingId)
+    return this.sql('SELECT id, display_name, is_organizer FROM attendees WHERE meeting_id = ? ORDER BY is_organizer DESC, display_name').all(meetingId)
       .map((a) => ({ id: a.id, displayName: a.display_name, isOrganizer: !!a.is_organizer }));
   }
   attendeeCount(meetingId) { return this.sql('SELECT COUNT(*) AS n FROM attendees WHERE meeting_id = ?').get(meetingId).n; }
@@ -226,11 +234,11 @@ export class Store {
 
   // ---- reports
   addReport(meetingId, reason, text) {
-    this.sql('INSERT INTO reports (meeting_id, reason, text, created_hour) VALUES (?, ?, ?, ?)').run(meetingId, reason, text, this.hour());
+    this.sql('INSERT INTO reports (id, meeting_id, reason, text, created_hour) VALUES (?, ?, ?, ?, ?)').run(rid(), meetingId, reason, text, this.hour());
   }
   reports() {
     return this.sql(`SELECT r.*, m.status, w.title FROM reports r JOIN meetings m ON m.id = r.meeting_id JOIN works w ON w.id = m.work_id
-      ORDER BY r.id DESC LIMIT 200`).all();
+      ORDER BY r.created_hour DESC LIMIT 200`).all();
   }
   deleteReport(id) { this.sql('DELETE FROM reports WHERE id = ?').run(id); }
   reportCountForMeeting(meetingId) { return this.sql('SELECT COUNT(*) AS n FROM reports WHERE meeting_id = ?').get(meetingId).n; }
@@ -239,10 +247,11 @@ export class Store {
   audit(action, target = '') {
     this.sql('INSERT INTO audit_log (at_hour, action, target) VALUES (?, ?, ?)').run(this.hour(), action, String(target).slice(0, 200));
   }
-  auditLog(limit = 100) { return this.sql('SELECT * FROM audit_log ORDER BY id DESC LIMIT ?').all(limit); }
+  auditLog(limit = 100) { return this.sql('SELECT * FROM audit_log ORDER BY at_hour DESC, id DESC LIMIT ?').all(limit); }
 
   // ---- bulk removal (admin)
   deleteRequestsSince(hours) {
+    this.version++;
     return this.sql('DELETE FROM requests WHERE created_hour >= ?').run(this.hour() - hours).changes;
   }
   deleteMeetingsSince(hours) {
@@ -252,6 +261,7 @@ export class Store {
   // ---- scheduled cleanup
   cleanup() {
     const h = this.hour();
+    this.version++;
     return this.tx(() => ({
       requests: this.sql('DELETE FROM requests WHERE expires_hour <= ?').run(h).changes,
       meetings: this.sql('DELETE FROM meetings WHERE delete_after_hour <= ?').run(h).changes,

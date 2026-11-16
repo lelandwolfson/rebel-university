@@ -43,10 +43,10 @@ export default function register(app) {
 
   router.post('/admin/login', (ctx) => {
     enabled();
-    const okIp = app.limiter.hit('admin-login', ctx.ipKey, 5, 15 * 60 * 1000);
-    const okAll = app.limiter.hit('admin-login', '*', 30, 15 * 60 * 1000);
-    if (!okIp || !okAll) return loginPage(ctx, ctx.t('err.rate'), 429);
+    // Form check first, then a per-IP limit. No site-wide cap: one IP could
+    // otherwise lock the admin out. The 32+ character secret makes guessing futile.
     if (checkForm(ctx)) return loginPage(ctx, ctx.t('err.form'), 400);
+    if (!app.limiter.hit('admin-login', ctx.ipKey, 5, 15 * 60 * 1000)) return loginPage(ctx, ctx.t('err.rate'), 429);
     if (!safeEqual(ctx.body.secret || '', config.adminSecret)) {
       store.audit('login failed');
       return loginPage(ctx, 'Wrong secret.', 403);

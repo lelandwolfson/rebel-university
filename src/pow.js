@@ -1,45 +1,51 @@
 import crypto from 'node:crypto';
 import { hmac, safeEqual } from './security.js';
 
-// Self-hosted proof-of-work, same scheme as ALTCHA:
-//   server picks secret number n in [0, max], salt includes expiry and issue time,
-//   challenge = sha256(salt + n), signature = HMAC(challenge).
-// The browser brute-forces n. Changing the salt would require a new preimage,
-// so issue time and expiry are tamper-proof.
+// Self-hosted proof-of-work, ALTCHA-style:
+//   server picks secret number n in [0, max]; challenge = sha256(salt + n).
+//   The browser brute-forces n.
+// The salt carries issue time, expiry, difficulty, and a short hash of the
+// client's (rotating) IP key. The signature covers salt AND challenge, so
+// none of those can be altered (including by moving digits between the
+// number and the salt). The key is random per process, so solutions can't
+// be replayed after a restart.
 
-const TTL_MS = 2 * 60 * 60 * 1000;
+const TTL_MS = 60 * 60 * 1000;
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 export class ProofOfWork {
-  constructor(key, { now = () => Date.now() } = {}) {
+  constructor(key = crypto.randomBytes(32), { now = () => Date.now() } = {}) {
     this.key = key;
     this.now = now;
     this.used = new Map(); // challenge -> expiry; prevents replay
   }
 
-  create(max) {
+  create(max, ipKey = '') {
     const issued = this.now();
-    const salt = `${crypto.randomBytes(12).toString('hex')}?i=${issued}&e=${issued + TTL_MS}`;
+    const salt = `${crypto.randomBytes(12).toString('hex')}?i=${issued}&e=${issued + TTL_MS}&m=${max}&k=${String(ipKey).slice(0, 8)}`;
     const number = crypto.randomInt(0, max + 1);
     const challenge = sha256(salt + number);
-    return { algorithm: 'SHA-256', salt, challenge, maxnumber: max, signature: hmac(this.key, challenge) };
+    return { algorithm: 'SHA-256', salt, challenge, maxnumber: max, signature: hmac(this.key, `${salt}|${challenge}`) };
   }
 
   // Returns { ok, issued } or { ok: false, reason }.
-  verify(encoded) {
+  // ipKey: the submitting client's key; minMax: the lowest difficulty still accepted.
+  verify(encoded, { ipKey = '', minMax = 0 } = {}) {
     if (typeof encoded !== 'string' || encoded.length > 1000) return { ok: false, reason: 'missing' };
     let p;
     try { p = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')); } catch { return { ok: false, reason: 'malformed' }; }
     if (!p || typeof p.salt !== 'string' || typeof p.challenge !== 'string' || typeof p.signature !== 'string'
       || !Number.isSafeInteger(p.number) || p.number < 0) return { ok: false, reason: 'malformed' };
-    if (!safeEqual(hmac(this.key, p.challenge), p.signature)) return { ok: false, reason: 'signature' };
+    if (!safeEqual(hmac(this.key, `${p.salt}|${p.challenge}`), p.signature)) return { ok: false, reason: 'signature' };
     if (sha256(p.salt + p.number) !== p.challenge) return { ok: false, reason: 'solution' };
-    const m = /\?i=(\d+)&e=(\d+)$/.exec(p.salt);
+    const m = /\?i=(\d{1,15})&e=(\d{1,15})&m=(\d{1,10})&k=([A-Za-z0-9_-]{0,8})$/.exec(p.salt);
     if (!m) return { ok: false, reason: 'malformed' };
-    const issued = Number(m[1]);
-    const expires = Number(m[2]);
+    const [issued, expires, max] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if (p.number > max) return { ok: false, reason: 'solution' };
     if (this.now() > expires) return { ok: false, reason: 'expired' };
+    if (m[4] !== String(ipKey).slice(0, 8)) return { ok: false, reason: 'ip' };
+    if (max < minMax) return { ok: false, reason: 'difficulty' };
     if (this.used.has(p.challenge)) return { ok: false, reason: 'replay' };
     this.used.set(p.challenge, expires);
     return { ok: true, issued };
