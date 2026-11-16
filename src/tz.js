@@ -9,8 +9,16 @@ export function timeZones() {
   return zones;
 }
 
+const valid = new Map();
+// Any IANA name Intl accepts, including aliases such as Asia/Kolkata.
 export function isTimeZone(tz) {
-  return typeof tz === 'string' && timeZones().has(tz);
+  if (typeof tz !== 'string' || !/^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/.test(tz) || tz.length > 40) return false;
+  if (timeZones().has(tz)) return true;
+  if (!valid.has(tz)) {
+    if (valid.size > 1000) valid.clear();
+    try { new Intl.DateTimeFormat('en', { timeZone: tz }); valid.set(tz, true); } catch { valid.set(tz, false); }
+  }
+  return valid.get(tz);
 }
 
 function partsIn(ms, tz) {
