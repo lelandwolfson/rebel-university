@@ -41,3 +41,27 @@ test('hourly cleanup sweeps memory-only state too', () => {
   assert.equal(app.adminSessions.size, 0);
   store.close();
 });
+
+test('each tick logs one line with counts and statuses only', async () => {
+  const { runTick } = await import('../src/jobs.js');
+  const { ProofOfWork } = await import('../src/pow.js');
+  const { RateLimiter } = await import('../src/ratelimit.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ru-tick-'));
+  let now = Date.UTC(2026, 0, 1, 12);
+  const store = new Store(path.join(dir, 'live.db'), { now: () => now });
+  const w = store.findOrCreateWork({ kind: 'film', title: 'Secret Title Kraków', creator: 'Private Person', normKey: 'film:secret' });
+  store.createRequest({ tokenHash: 'x', workId: w.id, placeId: 5746545, onlineOnly: false, format: 'either', status: 'open' });
+  now += 91 * 86400000; // request expired
+  const lines = [];
+  const log = { info: (m) => lines.push(m), error: (m) => lines.push(m) };
+  const app = { store, now: () => now, log, config: { backupDir: path.join(dir, 'b'), backupKeep: 3 },
+    pow: new ProofOfWork(Buffer.alloc(32), { now: () => now }), limiter: new RateLimiter({ now: () => now }), adminSessions: new Map(), joinedFrom: new Map() };
+  await runTick(app);
+  await runTick(app);
+  assert.equal(lines.length, 2, 'one line per tick (moderation is off)');
+  assert.match(lines[0], /^jobs: cleanup ok requests=1 meetings=0 works=1 trash=0 runs=0 audit=0; backup written$/);
+  assert.match(lines[1], /^jobs: cleanup ok requests=0 meetings=0 works=0 trash=0 runs=0 audit=0; backup already-today$/);
+  for (const l of lines) assert.doesNotMatch(l, /Secret|Kraków|Private|Portland|5746545/);
+  store.close();
+  fs.rmSync(dir, { recursive: true });
+});

@@ -38,19 +38,31 @@ export function runBackup(app) {
   return file;
 }
 
+// One scheduled tick. Logs a single line every time, with counts and statuses
+// only: no titles, places, names, or other content, so the logs can confirm the
+// jobs ran without holding anything about people.
+export function runTick(app) {
+  let cleanup = 'failed';
+  let backup = 'failed';
+  try {
+    const r = runCleanup(app);
+    cleanup = `ok requests=${r.requests} meetings=${r.meetings} works=${r.works} trash=${r.trash ?? 0} runs=${r.runs ?? 0} audit=${r.audit}`;
+  } catch (e) {
+    app.log.error(`jobs: cleanup error (${e && e.name})`);
+  }
+  try {
+    backup = runBackup(app) ? 'written' : 'already-today';
+  } catch (e) {
+    app.log.error(`jobs: backup error (${e && e.name})`);
+  }
+  app.log.info(`jobs: cleanup ${cleanup}; backup ${backup}`);
+  return maybeRunModeration(app)
+    .then((r) => { if (r) app.log.info(`moderation: ${r.status}${r.counts ? ` reviewed=${r.counts.reviewed} approved=${r.counts.approved} removed=${r.counts.removed} flagged=${r.counts.flagged}` : ''}`); })
+    .catch((e) => app.log.error(`moderation: error (${e && e.name})`));
+}
+
 export function startJobs(app) {
-  const tick = () => {
-    try {
-      const r = runCleanup(app);
-      if (r.requests || r.meetings || r.works) app.log.info(`cleanup: ${r.requests} requests, ${r.meetings} meetings, ${r.works} works removed`);
-      const b = runBackup(app);
-      if (b) app.log.info('backup: written');
-      maybeRunModeration(app).then((r) => { if (r) app.log.info(`moderation: ${r.status}`); })
-        .catch((e) => app.log.error(`moderation: ${e && e.message}`));
-    } catch (e) {
-      app.log.error(`jobs: ${e && e.message}`);
-    }
-  };
+  const tick = () => { runTick(app); };
   setTimeout(tick, 10 * 1000).unref();
   const timer = setInterval(tick, 60 * 60 * 1000);
   timer.unref();
