@@ -74,3 +74,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-34. At most 2,000 open requests per work.** This bounds the work any one title can cause. It is far above any expected real use.
 
 **D-35. Rate-limit counters are split.** Traffic counters (page views, lookups) can be evicted under a flood. Security counters (posting, probing, blocks) never are. If their map ever fills, the site refuses new posts until it drains: brief unavailability rather than silently lifting protections. IPv6 limits apply per /64 and, more loosely, per /48.
+
+**D-36. Volume snapshots kept 5 days, not 7.** Fly created the volume with 5-day retention by default. Shorter retention is better for privacy, so the config and privacy page were changed to match: deleted data is gone from backups within 12 days.
+
+**D-37. flyctl installed from its official GitHub release, checksum-verified, into ~/.fly/bin.** The Arch package manager route needed sudo. Release v0.5.8 was used rather than the same-day latest.

@@ -16,7 +16,7 @@ primary_region = "iad"
 [[mounts]]
   source = "rebel_data"
   destination = "/data"
-  snapshot_retention = 7
+  snapshot_retention = 5 # Fly's default for new volumes; shorter is better for privacy
 
 [http_service]
   internal_port = 8080

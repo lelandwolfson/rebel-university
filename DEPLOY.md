@@ -76,7 +76,7 @@ You need a terminal with this repo checked out.
 
 ## Afterwards
 
-Nothing needs weekly upkeep. Expired data is deleted hourly and a database backup is written daily to `/data/backups` (7 kept), on top of Fly's daily volume snapshots (7 kept).
+Nothing needs weekly upkeep. Expired data is deleted hourly and a database backup is written daily to `/data/backups` (7 kept), on top of Fly's daily volume snapshots (5 kept).
 
 - Logs: `fly logs`
 - Update: `git pull && fly deploy --ha=false`

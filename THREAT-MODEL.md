@@ -116,7 +116,7 @@ Cost to legitimate users: a 200 km request takes about 16 times the base proof-o
 - The first poster of a hand-entered work sets its title and link for everyone. Works with links are held for admin review. Open Library text, which anyone can edit there, is cleaned like user input. Signed work references expire after a day.
 
 ### T8. Full database leak or legal demand
-- See "What exists to steal". Data is minimal, hashed, encrypted, and short-lived. Backups are kept 7 days, inside snapshots kept 7 days. Deleted rows are also flushed from SQLite's write-ahead log right away *(second review)*.
+- See "What exists to steal". Data is minimal, hashed, encrypted, and short-lived. Backups are kept 7 days, inside snapshots kept 5 days. Deleted rows are also flushed from SQLite's write-ahead log right away *(second review)*.
 - Seizing a *running* server also gets its memory, including the daily key that scrambles addresses, so recent posters' addresses could be recovered by brute force. Memory counters are scoped per work and meeting so they don't link a person's actions. Stated on the privacy page *(second review)*.
 - Privacy page states exactly what exists so a demand can be answered honestly.
 
