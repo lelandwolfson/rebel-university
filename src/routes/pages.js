@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { page } from '../app.js';
@@ -17,10 +18,18 @@ export default function register(app) {
     const type = TYPES[path.extname(name)];
     if (type) statics.set(name, { type, body: fs.readFileSync(new URL(name, PUBLIC_DIR)) });
   }
+  // Content-hash versions for static URLs, so browsers never run a stale script
+  // or stylesheet after a deploy.
+  app.asset = (name) => {
+    const f = statics.get(name);
+    if (!f) return `/static/${name}`;
+    f.version ||= crypto.createHash('sha256').update(f.body).digest('hex').slice(0, 10);
+    return `/static/${name}?v=${f.version}`;
+  };
   router.get('/static/:name', (ctx) => {
     const f = statics.get(ctx.params.name);
     if (!f) throw new HttpError(404);
-    ctx.res.writeHead(200, { 'Content-Type': f.type, 'Content-Length': f.body.length, 'Cache-Control': 'public, max-age=86400' });
+    ctx.res.writeHead(200, { 'Content-Type': f.type, 'Content-Length': f.body.length, 'Cache-Control': ctx.query.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache' });
     ctx.res.end(ctx.req.method === 'HEAD' ? undefined : f.body);
   });
 

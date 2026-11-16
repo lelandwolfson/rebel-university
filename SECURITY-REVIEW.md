@@ -81,6 +81,8 @@ It attacked a running server and confirmed 10 of 11 findings by running them. Ev
 | 11 | Low | **Deleted rows stayed in the WAL file**: a closed request's token hash and encrypted email remained in `rebel.db-wal`. | `wal_checkpoint(TRUNCATE)` runs after every user deletion and every hourly cleanup. | `finding 11` (no file in the data folder contains the deleted row) |
 | info | Info | `/admin?done=` echoed arbitrary text. Failed logins wrote one audit row each, so they could flood the log. | Only known action names are shown. Failed logins are audited at most once per 15 minutes. | n/a |
 
+Also found in the browser walk-through after the second review: browsers kept running the old cached `pow.js` (served for a day under an unchanged `?v=1`). So the first 200 km post was refused, because the old script submitted the base challenge. Real users would hit the same thing after any deploy that changed the script. Fixed: static URLs carry a content hash and are cached as immutable. Test: `static files are versioned by content...`.
+
 ## Compared with the first review
 
 - **Bypassed first-review fixes:**

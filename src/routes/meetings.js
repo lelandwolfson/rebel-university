@@ -122,7 +122,7 @@ ${errorBox(error)}
 </form>
 ${tips(ctx, { bring: true, compact: true })}
 </div>
-${powScript()}`,
+${powScript(ctx)}`,
     });
   }
 
@@ -187,7 +187,7 @@ ${state ? html`<p class="notice">${state}</p>` : html`
 </form>
 ${tips(ctx, { bring: m.format !== 'video', compact: true })}
 </div>
-${powScript()}`}
+${powScript(ctx)}`}
 <p class="quiet"><a href="/m/${m.id}/report">${t('meeting.report')}</a></p>`,
     });
   }
@@ -245,7 +245,7 @@ ${errorBox(error)}
   <button type="submit">${t('report.submit')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>
-${powScript()}`,
+${powScript(ctx)}`,
     });
   }
 

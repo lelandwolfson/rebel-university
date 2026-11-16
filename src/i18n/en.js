@@ -82,7 +82,7 @@ export default {
   'manage.title': 'Your request',
   'manage.saveLink': 'Save this page\'s address. It is the only way back to your request. We cannot recover it.',
   'manage.held': 'Hand-entered works are being reviewed before they appear, because of a spam wave. This usually clears soon.',
-  'manage.matches.none': 'Nobody else has asked for this work near you yet. Your request is listed on the open board without any personal details.',
+  'manage.matches.none': 'Nobody else has asked for this work near you yet. Within about an hour your request appears on the open board, with no personal details.',
   'manage.matches.some': '{n} other people want to discuss this work and could meet you.',
   'manage.matches.one': '1 other person wants to discuss this work and could meet you.',
   'manage.meetings': 'Meetings you can join',

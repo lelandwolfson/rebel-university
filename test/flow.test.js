@@ -490,3 +490,15 @@ test('distance: changes are limited and need proof-of-work for the new distance'
     assert.ok(seq.includes(429), `limited: ${seq}`);
   } finally { await t.close(); }
 });
+
+test('static files are versioned by content, so browsers never run a stale script after a deploy', async () => {
+  const c = new Client(s.base);
+  const p = await c.get('/request/new/details?manual=1');
+  const src = /src="(\/static\/pow\.js\?v=[0-9a-f]{10})"/.exec(p.text);
+  assert.ok(src, 'hashed script URL');
+  assert.match(p.text, /href="\/static\/style\.css\?v=[0-9a-f]{10}"/);
+  const versioned = await c.get(src[1]);
+  assert.match(versioned.headers.get('cache-control'), /immutable/);
+  const bare = await c.get('/static/pow.js');
+  assert.equal(bare.headers.get('cache-control'), 'no-cache');
+});

@@ -68,4 +68,6 @@ Checked on 2026-11-16 against the running app (browser walk-through on localhost
 | 23 | Matches | Matching ignores everything but work, place, and format. |
 | 24 | Matches | No "has read it" option. |
 
+Re-walked in a browser on 2026-11-16 after the travel-distance change and the second review. Covered: a 200 km request from Bend, Oregon (extra proof-of-work), changing it to 100 km, starting a meeting, joining, removing the attendee, a refused rejoin from the same address, and cancelling. The rows above still hold. Row 18's board now uses a fixed 50 km rule and refreshes about hourly (DECISIONS.md D-31). That is still Illich's notice board of titles with no match, without names.
+
 Gaps found during the walk-through and fixed: real browsers' form posts were rejected (Origin header), duplicate author names in Open Library results, and an over-long organizer page. See the git log.

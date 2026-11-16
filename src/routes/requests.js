@@ -207,7 +207,7 @@ ${inPerson && r.status === 'open' ? html`<details class="quiet"><summary>${t('ma
   ${guard(ctx, { pow: true, powBy: 'radius' })}
   <button type="submit">${t('manage.radius.change')}</button>
   <p class="pow-status" aria-live="polite"></p>
-</form></details>${powScript()}` : ''}
+</form></details>${powScript(ctx)}` : ''}
 <section class="quiet">
   ${r.emailEnc ? html`<form method="post" action="/r/${token}/email">${guard(ctx)}<p>${t('manage.email.set')} <button class="link" type="submit">${t('manage.email.remove')}</button></p></form>` : ''}
   <form method="post" action="/r/${token}/close">${guard(ctx)}<button class="secondary" type="submit">${t('manage.close')}</button></form>
@@ -323,6 +323,6 @@ ${ref ? html`<section class="card"><h2>${t('request.work.chosen')}</h2><p class=
   <button type="submit">${t('request.submit')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>
-${powScript()}`,
+${powScript(ctx)}`,
   });
 }

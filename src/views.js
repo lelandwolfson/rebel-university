@@ -15,7 +15,7 @@ export function layout(ctx, { title, body, noindex = false }) {
 <title>${full}</title>
 <meta name="description" content="${t('site.tagline')}">
 ${noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
-<link rel="stylesheet" href="/static/style.css?v=1">
+<link rel="stylesheet" href="${ctx.app.asset('style.css')}">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -84,8 +84,8 @@ export function guard(ctx, { pow = false, powBy = null } = {}) {
   return parts;
 }
 
-export function powScript() {
-  return raw('<script src="/static/pow.js?v=1" defer></script>');
+export function powScript(ctx) {
+  return html`<script src="${ctx.app.asset('pow.js')}" defer></script>`;
 }
 
 export function workLabel(ctx, w) {
