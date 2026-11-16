@@ -30,10 +30,12 @@ test('finding 1: a traffic flood never evicts security counters; a full guard ma
   assert.ok(lim.windows.size <= 200_000, 'traffic map bounded');
   assert.equal(lim.hit('radius-change', 'r1', 3, 86400000), false, 'still limited after the flood');
   assert.equal(lim.count('kicked', 'k1'), 1, 'block survives the flood');
-  // Fill the guard map: new guard keys are refused rather than evicting old ones.
-  for (let i = 0; i < 300_000; i++) lim.hit('w:x', `g${i}`, 10, 600000);
-  assert.equal(lim.hit('w:request', 'new-key', 10, 600000), false, 'fails closed');
-  assert.equal(lim.seen('dup', 'new-dup', 600000), true, 'fails closed');
+  // Fill the guard map from many sources: it is never evicted. Heavy sources
+  // are refused when full; light sources still have reserved room (third review).
+  for (let i = 0; i < 300_000; i++) lim.hit('w:x', `g${i}`, 10, 600000, `owner${i % 400}`);
+  assert.equal(lim.hit('w:request', 'heavy-new', 10, 600000, 'owner1'), false, 'a heavy source is refused');
+  assert.equal(lim.seen('dup', 'heavy-dup', 600000, 'owner1'), true, 'fails closed for that source');
+  assert.equal(lim.hit('w:request', 'light-new', 10, 600000, 'honest-newcomer'), true, 'a light source still gets in');
   assert.equal(lim.count('kicked', 'k1'), 1);
 });
 

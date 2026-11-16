@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { safeEqual } from './security.js';
 
 export class HttpError extends Error {
@@ -90,8 +91,9 @@ export function clientIp(req, trustProxy) {
   if (trustProxy) {
     // Only Fly's edge header: Fly sets it on every request and clients can't
     // override it there. X-Forwarded-For is client-controlled, so it is ignored.
+    // Anything that isn't a single valid IP address is ignored.
     const fly = req.headers['fly-client-ip'];
-    if (typeof fly === 'string' && fly) return fly.trim();
+    if (typeof fly === 'string' && net.isIP(fly.trim())) return fly.trim();
   }
   return req.socket.remoteAddress || 'unknown';
 }

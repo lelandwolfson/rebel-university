@@ -62,18 +62,18 @@ export function noticeBox(msg) {
 // Hidden fields every form carries.
 // powBy: name of a form field (the travel distance) whose value scales the work.
 // One challenge per distinct factor is embedded; the browser solves the one that applies.
-export function guard(ctx, { pow = false, powBy = null } = {}) {
+export function guard(ctx, { pow = false, powBy = null, action = '' } = {}) {
   const parts = [html`<input type="hidden" name="_csrf" value="${ctx.csrf}">`];
   if (pow) {
     const base = ctx.app.powDifficulty(ctx.ipKey, ctx.ipKey48);
-    const challenge = ctx.app.pow.create(base, ctx.ipKey, 1);
+    const challenge = ctx.app.pow.create(base, ctx.ipKey, 1, action);
     let byAttrs = '';
     if (powBy) {
       const byFactor = new Map([[1, challenge]]);
       const map = {};
       for (const km of RADII_KM) {
         const f = radiusWorkFactor(km);
-        if (!byFactor.has(f)) byFactor.set(f, ctx.app.pow.create(Math.min(base * f, POW_CAP), ctx.ipKey, f));
+        if (!byFactor.has(f)) byFactor.set(f, ctx.app.pow.create(Math.min(base * f, POW_CAP), ctx.ipKey, f, action));
         map[km] = byFactor.get(f);
       }
       byAttrs = html` data-challenge-by="${powBy}" data-challenges="${JSON.stringify(map)}"`;

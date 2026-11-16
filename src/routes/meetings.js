@@ -18,17 +18,16 @@ function kickKeys(ctx, meetingId) {
   return [l.scoped(ctx.ipKey, `kick:${meetingId}`), l.scoped(ctx.ipKey48, `kick48:${meetingId}`)];
 }
 
-// Checked with today's and yesterday's address keys, so the block outlives the
-// daily key rotation (second review, finding 9).
+// The address key is stable for the life of the process, so a block holds
+// until the meeting has passed (third review: it used to lapse after a day).
 function isKicked(ctx, meetingId) {
-  const l = ctx.app.limiter;
-  const keys = [
-    ...kickKeys(ctx, meetingId),
-    l.scopedPrev(ctx.ipKeyPrev, `kick:${meetingId}`), l.scopedPrev(ctx.ipKey48Prev, `kick48:${meetingId}`),
-    // a block written yesterday with yesterday's keys, checked against today's address
-    ctx.ipKeyPrev && l.scoped(ctx.ipKeyPrev, `kick:${meetingId}`), ctx.ipKey48Prev && l.scoped(ctx.ipKey48Prev, `kick48:${meetingId}`),
-  ];
-  return keys.some((k) => k && l.count('kicked', k) > 0);
+  return kickKeys(ctx, meetingId).some((k) => ctx.app.limiter.count('kicked', k) > 0);
+}
+
+// How long join records and removal blocks are kept: until a day after the
+// meeting (at least a day, at most 31 days).
+function blockWindow(app, m) {
+  return Math.min(31 * 86400000, Math.max(86400000, m.startsUtc + 86400000 - app.now()));
 }
 
 function isMeetingId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{12}$/.test(id); }
@@ -115,7 +114,7 @@ ${errorBox(error)}
 <div class="split">
 <form method="post" action="/r/${ctx.params.token}/meet" data-pow>
   ${meetingFields(ctx, v, { placeId, defaultTz, needName: true })}
-  ${guard(ctx, { pow: true })}
+  ${guard(ctx, { pow: true, action: 'meeting' })}
   <button type="submit">${t('meeting.create')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>
@@ -134,7 +133,7 @@ ${powScript(ctx)}`,
   router.post('/r/:token/meet', async (ctx) => {
     const r = await loadRequest(ctx);
     if (r.status !== 'open') throw new HttpError(404);
-    const err = checkForm(ctx, { pow: true });
+    const err = checkForm(ctx, { pow: true, action: 'meeting' });
     if (err) return newMeetingPage(ctx, r, ctx.body, err, 400);
     if (!allowWrite(ctx, 'meeting', 6) || !app.limiter.hit('meet-per-link', r.id, 5, 24 * 3600 * 1000)) {
       return newMeetingPage(ctx, r, ctx.body, ctx.t('err.rate'), 429);
@@ -147,7 +146,7 @@ ${powScript(ctx)}`,
       id: randomId(9), workId: r.workId, placeId: v.placeId, format: v.format, startsUtc: v.startsUtc, tz: v.tz,
       venue: v.venue, videoUrl: v.videoUrl, note: v.note, organizerTokenHash: hashToken(token), organizerName: v.name,
     });
-    app.recordWrite(ctx.ipKey, ctx.ipKey48);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48, ctx.owner);
     background(app, notifyNewMeeting(app, meeting, store.getWork(r.workId), r.id));
     redirect(ctx, `/a/${token}?new=1`);
   });
@@ -179,7 +178,7 @@ ${state ? html`<p class="notice">${state}</p>` : html`
   ${errorBox(error)}
   <p>${t('meetings.intro')}</p>
   ${field(t('meeting.name'), html`<input name="name" value="${name}" maxlength="40" required autocomplete="off">`, t('meeting.name.hint'))}
-  ${guard(ctx, { pow: true })}
+  ${guard(ctx, { pow: true, action: 'join' })}
   <button type="submit">${t('meeting.join.button')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>
@@ -202,25 +201,27 @@ ${powScript(ctx)}`}
     const m = store.getMeeting(ctx.params.id);
     if (!m) throw new HttpError(404);
     const name = ctx.body.name || '';
-    const err = checkForm(ctx, { pow: true });
+    const err = checkForm(ctx, { pow: true, action: 'join' });
     if (err) return publicMeetingPage(ctx, m, { error: err, name, status: 400 });
-    if (!allowWrite(ctx, 'join', 30)) return publicMeetingPage(ctx, m, { error: ctx.t('err.rate'), name, status: 429 });
-    if (isKicked(ctx, m.id) || !allowScoped(ctx, 'join-meeting', `meet:${m.id}`, 3, 24 * 3600 * 1000)) {
-      return publicMeetingPage(ctx, m, { error: 'You cannot join this meeting again from here.', name, status: 429 });
-    }
+    // Everything that can be checked without creating counters is checked first,
+    // so refused joins can't be used to fill the limiter (third review, finding 1).
     if (m.status !== 'open' || m.startsUtc < app.now() - 3600 * 1000 || store.attendeeCount(m.id) >= MAX_ATTENDEES) {
       return publicMeetingPage(ctx, m, { status: 409 });
     }
     const display = clean(name, 40);
     if (!display) return publicMeetingPage(ctx, m, { error: 'Please choose a name for this meeting.', name, status: 400 });
+    if (isKicked(ctx, m.id)) return publicMeetingPage(ctx, m, { error: 'You cannot join this meeting again from here.', name, status: 429 });
+    if (!allowWrite(ctx, 'join', 30)) return publicMeetingPage(ctx, m, { error: ctx.t('err.rate'), name, status: 429 });
+    if (!allowScoped(ctx, 'join-meeting', `meet:${m.id}`, 3, 24 * 3600 * 1000)) {
+      return publicMeetingPage(ctx, m, { error: 'You cannot join this meeting again from here.', name, status: 429 });
+    }
     const token = newToken();
     const attendeeId = store.addAttendee(m.id, hashToken(token), display);
-    // Memory only, for 24 hours: lets an organizer's removal stick.
-    // Memory only, for 24 hours, so an organizer's removal sticks. Stores only the
-    // per-meeting block keys, which can't be linked to anything else.
-    app.joinedFrom.set(attendeeId, { keys: kickKeys(ctx, m.id), until: app.now() + 24 * 3600 * 1000 });
+    // Memory only, until a day after the meeting, so an organizer's removal sticks.
+    // Holds only the per-meeting block keys; deleted when the person leaves.
+    app.joinedFrom.set(attendeeId, { keys: kickKeys(ctx, m.id), owner: ctx.owner, until: app.now() + blockWindow(app, m) });
     if (app.joinedFrom.size > 100_000) app.joinedFrom.delete(app.joinedFrom.keys().next().value);
-    app.recordWrite(ctx.ipKey, ctx.ipKey48);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48, ctx.owner);
     redirect(ctx, `/a/${token}?new=1`);
   });
 
@@ -239,7 +240,7 @@ ${errorBox(error)}
   ${REASONS.map((r, i) => html`<label class="radio"><input type="radio" name="reason" value="${r}"${i === 0 ? ' checked' : ''}> ${reasons[r]}</label>`)}
   </fieldset>
   ${field(t('report.text'), html`<textarea name="text" maxlength="500" rows="4"></textarea>`)}
-  ${guard(ctx, { pow: true })}
+  ${guard(ctx, { pow: true, action: 'report' })}
   <button type="submit">${t('report.submit')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>
@@ -258,7 +259,7 @@ ${powScript(ctx)}`,
     if (!isMeetingId(ctx.params.id)) throw new HttpError(404);
     const m = store.getMeeting(ctx.params.id);
     if (!m) throw new HttpError(404);
-    const err = checkForm(ctx, { pow: true });
+    const err = checkForm(ctx, { pow: true, action: 'report' });
     if (err) return reportPage(ctx, m, { error: err, status: 400 });
     if (!allowWrite(ctx, 'report', 10)) return reportPage(ctx, m, { error: ctx.t('err.rate'), status: 429 });
     const reason = REASONS.includes(ctx.body.reason) ? ctx.body.reason : 'other';
@@ -268,7 +269,7 @@ ${powScript(ctx)}`,
     const fresh = allowScoped(ctx, 'report-meeting', `report:${m.id}`, 3, 24 * 3600 * 1000);
     const count = store.reportCountForMeeting(m.id);
     if (fresh && (count < 500 || reason === 'unsafe' || reason === 'participant')) store.addReport(m.id, reason, clean(ctx.body.text, 500));
-    app.recordWrite(ctx.ipKey, ctx.ipKey48);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48, ctx.owner);
     reportPage(ctx, m, { done: true });
   });
 
@@ -346,6 +347,7 @@ ${tips(ctx, { bring: inPerson })}
     if (checkForm(ctx)) throw new HttpError(400, 'err.form');
     if (a.isOrganizer) throw new HttpError(400);
     store.removeAttendee(m.id, a.id);
+    app.joinedFrom.delete(a.id); // nothing kept in memory about someone who left
     page(ctx, { title: ctx.t('meeting.left'), noindex: true, body: html`<h1>${ctx.t('meeting.left')}</h1><p><a href="/">Home</a></p>` });
   });
 
@@ -383,7 +385,7 @@ ${tips(ctx, { bring: inPerson })}
     const id = Number(ctx.body.attendee);
     if (Number.isInteger(id) && store.removeAttendee(d.m.id, id)) {
       const from = app.joinedFrom.get(id);
-      if (from) for (const k of from.keys) app.limiter.seen('kicked', k, 24 * 3600 * 1000);
+      if (from) for (const k of from.keys) app.limiter.seen('kicked', k, blockWindow(app, d.m), from.owner);
       app.joinedFrom.delete(id);
     }
     redirect(ctx, `/a/${d.token}`);

@@ -98,7 +98,7 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
 
     // Wider distances need proportionally more proof-of-work (THREAT-MODEL.md T1a).
     const { radiusKm, factor } = radiusFromBody(b, b.place !== 'online' && b.format !== 'video');
-    const formErr = checkForm(ctx, { pow: true, factor });
+    const formErr = checkForm(ctx, { pow: true, factor, action: 'request' });
     if (formErr) return fail(formErr);
     if (!allowWrite(ctx, 'request', 12)) return fail(t('err.rate'), 429);
 
@@ -156,7 +156,7 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
       tokenHash: hashToken(token), workId: work.id, placeId, onlineOnly, format, radiusKm, emailEnc,
       status: work.held ? 'held' : 'open',
     });
-    app.recordWrite(ctx.ipKey, ctx.ipKey48);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48, ctx.owner);
 
     const matchCount = request.status === 'open'
       ? matchesFor(request, store.openRequestsForWork(work.id), app.distanceKm).length : 0;
@@ -204,7 +204,7 @@ ${r.status === 'held' ? html`<p class="notice">${t('manage.held')}</p>` : html`
 ${inPerson && r.status === 'open' ? html`<details class="quiet"><summary>${t('manage.radius.change')}</summary>
 <form method="post" action="/r/${token}/radius" data-pow>
   <fieldset><legend>${t('request.radius')}</legend>${radiusOptions(ctx, r.radiusKm)}<p class="hint">${t('request.radius.hint')}</p></fieldset>
-  ${guard(ctx, { pow: true, powBy: 'radius' })}
+  ${guard(ctx, { pow: true, powBy: 'radius', action: 'radius' })}
   <button type="submit">${t('manage.radius.change')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form></details>${powScript(ctx)}` : ''}
@@ -230,12 +230,12 @@ ${inPerson && r.status === 'open' ? html`<details class="quiet"><summary>${t('ma
     if (r.status !== 'open' || !acceptsInPerson(r)) throw new HttpError(400);
     const n = Number(ctx.body.radius);
     if (!isRadius(n)) throw new HttpError(400, 'err.form');
-    if (checkForm(ctx, { pow: true, factor: radiusWorkFactor(n) })) throw new HttpError(400, 'err.form');
+    if (checkForm(ctx, { pow: true, factor: radiusWorkFactor(n), action: 'radius' })) throw new HttpError(400, 'err.form');
     if (n === r.radiusKm) return redirect(ctx, `/r/${ctx.params.token}`);
     if (!app.limiter.hit('radius-change', r.id, 3, 24 * 3600 * 1000)
       || !allowScoped(ctx, 'work-per-ip', `work:${r.workId}`, 3, 24 * 3600 * 1000)) throw new HttpError(429);
     app.store.setRequestRadius(r.id, n);
-    app.recordWrite(ctx.ipKey, ctx.ipKey48);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48, ctx.owner);
     const updated = app.store.getRequest(r.id);
     background(app, notifyNewRequest(app, updated, app.store.getWork(r.workId)));
     redirect(ctx, `/r/${ctx.params.token}?radius=changed`);
@@ -318,7 +318,7 @@ ${ref ? html`<section class="card"><h2>${t('request.work.chosen')}</h2><p class=
   </fieldset>
 
   ${field(t('request.email.label'), html`<input type="email" name="email" value="${v.email || ''}" maxlength="254" autocomplete="email">`, t('request.email.hint'))}
-  ${guard(ctx, { pow: true, powBy: 'radius' })}
+  ${guard(ctx, { pow: true, powBy: 'radius', action: 'request' })}
   <button type="submit">${t('request.submit')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>

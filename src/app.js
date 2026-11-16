@@ -39,7 +39,7 @@ export function createApp(config, { store, places, mailer, openLibrary, now = ()
   app.distanceKm = (a, b) => app.places.distanceKm(a, b);
   app.lastBackupAt = () => lastBackupAt(app);
   app.powDifficulty = (ipKey, ipKey48) => powDifficulty(app.limiter, ipKey, config.powBase, ipKey48);
-  app.recordWrite = (ipKey, ipKey48) => recordWrite(app.limiter, ipKey, ipKey48);
+  app.recordWrite = (ipKey, ipKey48, owner) => recordWrite(app.limiter, ipKey, ipKey48, owner);
 
   for (const register of [pages, requests, meetings, listings, admin]) register(app);
 
@@ -71,10 +71,9 @@ async function handle(app, req, res) {
     ctx.query = url.searchParams;
     ctx.ip = clientIp(req, config.trustProxy);
     const keys = app.limiter.ipKeys(ctx.ip);
-    ctx.ipKey = keys.k64; // the /64 (IPv6) or the address (IPv4)
-    ctx.ipKey48 = keys.k48; // the /48, a coarser tier for IPv6
-    ctx.ipKeyPrev = keys.prev64; // yesterday's key, so blocks survive the daily rotation
-    ctx.ipKey48Prev = keys.prev48;
+    ctx.ipKey = keys.k64; // the address (IPv4) or /64 (IPv6)
+    ctx.ipKey48 = keys.k48; // the address (IPv4) or /48 (IPv6), a coarser budget tier
+    ctx.owner = keys.owner; // the /24 (IPv4) or /48 (IPv6) that owns guard counters
     ctx.cookies = parseCookies(req.headers.cookie);
 
     const cname = csrfCookieName(secure);
@@ -85,7 +84,8 @@ async function handle(app, req, res) {
       ctx.csrfFresh = true;
     }
 
-    if (!app.limiter.hit('req', ctx.ipKey, 600, 10 * 60 * 1000) || !app.limiter.hit('req', `48|${ctx.ipKey48}`, 6000, 10 * 60 * 1000)) throw new HttpError(429);
+    // Coarse tier first, so a source already over its /48 limit creates no new /64 counters.
+    if (!app.limiter.hit('req', `48|${ctx.ipKey48}`, 6000, 10 * 60 * 1000) || !app.limiter.hit('req', ctx.ipKey, 600, 10 * 60 * 1000)) throw new HttpError(429);
 
     const m = app.router.match(req.method, url.pathname);
     if (!m) throw new HttpError(404);
@@ -140,7 +140,8 @@ export function redirect(ctx, location) {
 
 // Checks for every form submission. Returns an error message or null.
 // factor: extra proof-of-work the action needs (wider travel distances; THREAT-MODEL.md T1a).
-export function checkForm(ctx, { pow = false, factor = 1 } = {}) {
+// action: which form this proof-of-work is for; a challenge from one form can't be used on another.
+export function checkForm(ctx, { pow = false, factor = 1, action = '' } = {}) {
   const { app, t } = ctx;
   const why = (reason) => { if (app.config.formDebug) app.log.info(`form rejected: ${reason}`); return t('err.form'); };
   if (!ctx.csrfValid) return why(`csrf (fresh=${!!ctx.csrfFresh} origin=${ctx.req.headers.origin || '-'})`);
@@ -149,7 +150,7 @@ export function checkForm(ctx, { pow = false, factor = 1 } = {}) {
   // Difficulty may rise between page load and submit; allow 4x slack, no more.
   // The required work is capped, so stacked multipliers can't lock honest people out (second review, finding 5).
   const minMax = Math.min(Math.floor(app.powDifficulty(ctx.ipKey, ctx.ipKey48) / 4) * factor, Math.floor(POW_CAP / 4));
-  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax, minFactor: factor });
+  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax, minFactor: factor, action });
   if (!r.ok) return why(`pow ${r.reason}`);
   if (app.now() - r.issued < app.config.minFormMs) return t('err.tooFast');
   return null;
@@ -159,15 +160,15 @@ export function checkForm(ctx, { pow = false, factor = 1 } = {}) {
 // Applies per /64 (or IPv4 address) and, 8 times looser, per /48.
 export function allowWrite(ctx, bucket, limit, windowMs = 60 * 60 * 1000) {
   const l = ctx.app.limiter;
-  return l.hit(`w:${bucket}`, ctx.ipKey, limit, windowMs) && l.hit(`w48:${bucket}`, ctx.ipKey48, limit * 8, windowMs);
+  return l.hit(`w48:${bucket}`, ctx.ipKey48, limit * 8, windowMs, ctx.owner) && l.hit(`w:${bucket}`, ctx.ipKey, limit, windowMs, ctx.owner);
 }
 
 // A per-address budget about one thing (a work, a meeting), in both tiers,
 // keyed so the counters can't be linked to each other in memory.
 export function allowScoped(ctx, bucket, scope, limit, windowMs) {
   const l = ctx.app.limiter;
-  return l.hit(bucket, l.scoped(ctx.ipKey, scope), limit, windowMs)
-    && l.hit(`${bucket}48`, l.scoped(ctx.ipKey48, scope), limit * 4, windowMs);
+  return l.hit(`${bucket}48`, l.scoped(ctx.ipKey48, scope), limit * 4, windowMs, ctx.owner)
+    && l.hit(bucket, l.scoped(ctx.ipKey, scope), limit, windowMs, ctx.owner);
 }
 
 // Slow down anyone trying lots of private links.
