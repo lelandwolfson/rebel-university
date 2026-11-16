@@ -130,7 +130,7 @@ export function privacy(ctx) {
 
 <h2>Who sees what</h2>
 <ul>
-  <li><strong>Everyone:</strong> the open board (works with nobody within 50 km or on video yet, with region and country only, updated about hourly), and the meeting listing (work, city, date, format).</li>
+  <li><strong>Everyone:</strong> the open board (works with nobody within 25 km or on video yet, with region and country only, updated about hourly), and the meeting listing (work, city, date, format).</li>
   <li><strong>You, with your private link:</strong> your request, how far you said you will travel, and how many people match it. Nobody else sees your travel distance.</li>
   <li><strong>People who join a meeting:</strong> its venue, video link, note, and the display names of others who joined.</li>
   <li><strong>The site admin:</strong> requests and meetings (never emails), reports, and the audit log of admin actions.</li>

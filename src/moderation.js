@@ -93,7 +93,8 @@ export function collect(store, limit = MAX_ITEMS) {
       work: { title: g.title, creator: g.creator, kind: g.kind }, format: g.format,
       reports: g.reports.map((r) => ({ reason: r.reason, text: scrubNumbers(r.text) })),
     });
-    map.set(id, { type: 'reported_meeting', meetingId: g.meetingId, reportIds: g.reportIds, title: g.title, allowed: ['flag_for_owner'], reportCount: g.reportIds.length });
+    map.set(id, { type: 'reported_meeting', meetingId: g.meetingId, reportIds: g.reportIds, title: g.title, allowed: ['flag_for_owner'], reportCount: g.reportIds.length,
+      reportReasons: [...new Set(g.reports.map((r) => r.reason))].sort() });
   }
   return { items, map };
 }
@@ -222,7 +223,7 @@ function publicTitle(item, approved) {
 
 function refOf(item) {
   // adminTitle is shown on the admin page only; the digest never includes it.
-  return { adminTitle: item.title, meetingId: item.meetingId || null, workId: item.type === 'held_work' ? item.id : null, reportCount: item.reportCount || 0 };
+  return { adminTitle: item.title, meetingId: item.meetingId || null, workId: item.type === 'held_work' ? item.id : null, reportCount: item.reportCount || 0, reportReasons: item.reportReasons || [] };
 }
 
 // One moderation run. Returns the stored run summary.
@@ -275,7 +276,7 @@ async function runLocked(app, client) {
       else store.markReviewed('reports', item.reportIds);
     }
     const summary = { ...base, note: `The model asked for ${removals.length} removals, over the limit of ${MAX_REMOVALS}. No action was taken; please review these in the admin queue.` };
-    summary.flagged = [...map.values()].map((item) => ({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: 'Run over the removal limit: no action taken.' }));
+    summary.flagged = [...map.values()].map((item) => ({ type: item.type, code: 'over_limit', title: publicTitle(item, false), ...refOf(item), reason: 'Run over the removal limit: no action taken.' }));
     summary.counts.flagged = summary.flagged.length;
     store.addRun('flagged', summary);
     return { status: 'flagged', ...summary };
@@ -299,34 +300,34 @@ async function runLocked(app, client) {
     const current = item.type === 'held_work' ? store.getWork(item.id) : null;
     if (item.type === 'held_work' && (!current || !current.held)) continue;
     if (d.action === 'flag_for_owner') {
-      base.flagged.push({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: d.reason });
+      base.flagged.push({ type: item.type, code: item.type === 'reported_meeting' ? 'report' : 'unclear', title: publicTitle(item, false), ...refOf(item), reason: d.reason });
     } else if (d.action === 'approve' && approvals >= MAX_APPROVALS) {
-      base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: `Approval limit of ${MAX_APPROVALS} per run reached. Please check it.` });
+      base.flagged.push({ type: item.type, code: 'approval_limit', title: null, ...refOf(item), reason: `Approval limit of ${MAX_APPROVALS} per run reached. Please check it.` });
     } else if (d.action === 'remove' && store.requestCountForWork(item.id) > 1) {
       // Others may have joined this work by typing the same title: never auto-remove their requests.
-      base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: `Removal held back: several people's requests use this work. ${d.reason}` });
+      base.flagged.push({ type: item.type, code: 'shared_work', title: null, ...refOf(item), reason: `Removal held back: several people's requests use this work. ${d.reason}` });
     } else if (d.action === 'approve' && looksLikeInstructions(item.text)) {
-      base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: 'Approval blocked: the text reads like instructions to a reviewer. Please check it.' });
+      base.flagged.push({ type: item.type, code: 'instruction_like', title: null, ...refOf(item), reason: 'Approval blocked: the text reads like instructions to a reviewer. Please check it.' });
     } else if (d.action === 'approve') { // held work without a link (enforced by validate)
       store.approveWork(item.id);
       approvals++;
       store.audit('approve work', item.id, { actor: 'ai', reason: d.reason });
-      base.actions.push({ type: item.type, title: publicTitle(item, true), ...refOf(item), action: 'approve', reason: d.reason });
+      base.actions.push({ type: item.type, code: 'real_work', title: publicTitle(item, true), ...refOf(item), action: 'approve', reason: d.reason });
       base.counts.approved++;
     } else if (d.action === 'remove') { // held work only (enforced by validate)
       const trashId = store.trashWork(item.id, { actor: 'ai', reason: d.reason });
       if (trashId) store.audit('remove work', item.id, { actor: 'ai', reason: d.reason });
-      base.actions.push({ type: item.type, title: null, ...refOf(item), action: 'remove', reason: d.reason, trashId: trashId || null });
+      base.actions.push({ type: item.type, code: 'spam', title: null, ...refOf(item), action: 'remove', reason: d.reason, trashId: trashId || null });
       base.counts.removed++;
     }
   }
   for (const u of out.unreviewable) {
     const item = map.get(u.itemId);
     decided.add(u.itemId);
-    base.flagged.push({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: u.why });
+    base.flagged.push({ type: item.type, code: 'not_reviewed', title: publicTitle(item, false), ...refOf(item), reason: u.why });
   }
   for (const [id, item] of map) {
-    if (!decided.has(id)) base.flagged.push({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: 'No valid decision from the model.' });
+    if (!decided.has(id)) base.flagged.push({ type: item.type, code: 'not_reviewed', title: publicTitle(item, false), ...refOf(item), reason: 'No valid decision from the model.' });
   }
   base.counts.flagged = base.flagged.length;
   if (out.problems.length) base.note = `Some batches were retried in smaller parts: ${[...new Set(out.problems)].join('; ')}.`;

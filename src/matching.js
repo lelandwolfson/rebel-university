@@ -77,7 +77,9 @@ export function unmatched(requests, distanceKm) {
 // BOARD_NEARBY_KM in person. A spatial grid keeps it fast even when one work
 // has thousands of requests (second review, finding 3).
 
-export const BOARD_NEARBY_KM = DEFAULT_RADIUS_KM;
+// The smallest travel distance anyone can choose, so the board never reveals
+// more about where a reader is than the private match count does (third review).
+export const BOARD_NEARBY_KM = 25;
 const CELL_DEG = 0.5;
 
 // locate(placeId) -> { lat, lon } or null

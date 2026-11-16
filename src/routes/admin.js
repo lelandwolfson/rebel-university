@@ -24,6 +24,16 @@ const RESTORE_ERRORS = {
   failed: 'it could not be restored',
 };
 
+// The run's note as a fixed code for the digest (the note text stays on the admin page).
+function noteCode(r) {
+  const n = r.summary.note || '';
+  if (r.status === 'error') return 'api_error';
+  if (/over the limit/.test(n)) return 'over_limit';
+  if (/Nothing to review/.test(n)) return 'nothing_to_review';
+  if (/retried in smaller parts/.test(n)) return 'partly_retried';
+  return null;
+}
+
 const hourLabel = (h) => new Date(h * 3600 * 1000).toISOString().slice(0, 13).replace('T', ' ') + 'h';
 
 export default function register(app) {
@@ -219,11 +229,14 @@ ${trash.map((t) => html`<tr><td>${hourLabel(t.removed_hour)}</td><td>${t.kind}: 
     const run = r ? {
       at: new Date(r.atMs).toISOString(),
       status: r.status,
-      note: r.summary.note || null,
+      note_code: noteCode(r),
       counts: r.summary.counts,
-      // Public titles only (approved works, meetings); never held-work titles, ids, or report text.
-      actions: (r.summary.actions || []).map((a) => ({ type: a.type, action: a.action, title: a.title || null, reason: a.reason })),
-      flagged: (r.summary.flagged || []).map((f) => ({ type: f.type, title: f.title || null, reason: f.reason })),
+      // Fixed codes, counts, and public titles only. No free text from the model or
+      // from anyone else reaches the reader (third review: it could carry
+      // instructions aimed at an AI reader, or names).
+      actions: (r.summary.actions || []).map((a) => ({ type: a.type, action: a.action, code: a.code || 'other', title: a.title || null })),
+      flagged: (r.summary.flagged || []).map((f) => ({ type: f.type, code: f.code || 'other', title: f.title || null,
+        ...(f.type === 'reported_meeting' ? { reports: f.reportCount || 0, report_reasons: (f.reportReasons || []).filter((x) => ['unsafe', 'spam', 'participant', 'other'].includes(x)) } : {}) })),
     } : null;
     const body = JSON.stringify({
       site: 'ok',

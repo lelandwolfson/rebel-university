@@ -57,7 +57,10 @@ async function handle(app, req, res) {
 
   const ctx = { app, req, res, t, params: {}, body: {}, form: new URLSearchParams() };
   try {
-    if (config.production && String(req.headers.host || '').startsWith('www.')) {
+    // One canonical site: any other host (www, the fly.dev address, a forged Host
+    // header) redirects to it. The health check answers on any host (third review).
+    const canonical = new URL(config.baseUrl).host;
+    if (config.production && String(req.headers.host || '') !== canonical && !String(req.url).startsWith('/healthz')) {
       res.writeHead(301, { Location: config.baseUrl + (req.url.startsWith('/') ? req.url : '/') });
       return res.end();
     }
