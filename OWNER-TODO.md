@@ -2,6 +2,10 @@
 
 Things only you can do: accounts, payments, secrets, DNS, legal.
 
+- [ ] **Publish the repo.** Creating a public GitHub repository was blocked by this session's permission settings, so the code is committed locally only. From the repo folder, run:
+  `gh repo create lelandwolfson/rebel-university --public --source . --push`
+  The source URL in the footer and security.txt assumes this name. If you use another, set `SOURCE_URL` (and `SECURITY_CONTACT` if needed) with `fly secrets set`.
+
 - [ ] **Deploy.** Follow [DEPLOY.md](DEPLOY.md): Fly.io account and payment card, `APP_SECRET` and `ADMIN_SECRET`, DNS records for rebeluniversity.org.
 - [ ] **Save `ADMIN_SECRET`** in your password manager.
 - [ ] **Lawyer review.** Have a lawyer review the terms (`/terms`, `src/i18n/en-pages.js`), especially the adults-only wording and the liability section, and the privacy page.
