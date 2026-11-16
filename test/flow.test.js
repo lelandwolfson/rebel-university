@@ -515,3 +515,20 @@ test('the 18+ policy appears once, as a plain sentence in the terms, and nowhere
   assert.doesNotMatch(report.text, /under 18/);
   for (const m of s.mailer.sent) assert.doesNotMatch(m.text, age);
 });
+
+test('style pass: fonts are self-hosted under a strict CSP, and the theme script is external', async () => {
+  const c = new Client(s.base);
+  const home = await c.get('/');
+  assert.match(home.headers.get('content-security-policy'), /font-src 'self'/);
+  assert.match(home.headers.get('content-security-policy'), /default-src 'none'/);
+  assert.match(home.text, /<script src="\/static\/theme\.js\?v=[0-9a-f]{10}"><\/script>/);
+  assert.doesNotMatch(home.text, /<script>|style="|fonts\.googleapis|gstatic/);
+  assert.match(home.text, /class="theme-toggle" hidden/);
+  const font = await c.get('/static/fonts/source-serif-4-latin-400-normal.woff2');
+  assert.equal(font.status, 200);
+  assert.equal(font.headers.get('content-type'), 'font/woff2');
+  assert.equal((await c.get('/static/fonts/../app.js')).status, 404);
+  assert.equal((await c.get('/static/fonts/OFL.txt')).status, 404, 'only fonts are served from there');
+  const css = (await c.get('/static/style.css')).text;
+  assert.doesNotMatch(css, /https?:\/\//, 'no external URLs in CSS');
+});

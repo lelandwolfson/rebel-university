@@ -8,6 +8,7 @@ import * as en from '../i18n/en-pages.js';
 
 const PUBLIC_DIR = new URL('../../public/', import.meta.url);
 const TYPES = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+const FONTS_DIR = new URL('../../public/fonts/', import.meta.url);
 
 export default function register(app) {
   const { router, config } = app;
@@ -31,6 +32,18 @@ export default function register(app) {
     if (!f) throw new HttpError(404);
     ctx.res.writeHead(200, { 'Content-Type': f.type, 'Content-Length': f.body.length, 'Cache-Control': ctx.query.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache' });
     ctx.res.end(ctx.req.method === 'HEAD' ? undefined : f.body);
+  });
+
+  // Self-hosted fonts (Source Serif 4, SIL Open Font License; see public/fonts/OFL.txt).
+  const fonts = new Map();
+  for (const name of fs.readdirSync(FONTS_DIR)) {
+    if (name.endsWith('.woff2')) fonts.set(name, fs.readFileSync(new URL(name, FONTS_DIR)));
+  }
+  router.get('/static/fonts/:name', (ctx) => {
+    const body = fonts.get(ctx.params.name);
+    if (!body) throw new HttpError(404);
+    ctx.res.writeHead(200, { 'Content-Type': 'font/woff2', 'Content-Length': body.length, 'Cache-Control': 'public, max-age=2592000' });
+    ctx.res.end(ctx.req.method === 'HEAD' ? undefined : body);
   });
 
   router.get('/', (ctx) => page(ctx, { title: null, body: en.home(ctx, tips(ctx, { bring: true })) }));

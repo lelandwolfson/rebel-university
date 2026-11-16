@@ -1,124 +1,317 @@
-/* Rebel University. Plain, text-forward, mobile first. System fonts only. */
+/* Rebel University
+   A quiet, text-first book page: one column, one serif, ink on paper.
+   Written from scratch. Fonts: Source Serif 4 (SIL Open Font License 1.1),
+   self-hosted in /static/fonts. License: AGPL-3.0-or-later */
+
+/* ---------- Type ---------- */
+
+@font-face {
+  font-family: "Source Serif 4"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(fonts/source-serif-4-latin-400-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: italic; font-weight: 400; font-display: swap;
+  src: url(fonts/source-serif-4-latin-400-italic.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url(fonts/source-serif-4-latin-600-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: italic; font-weight: 600; font-display: swap;
+  src: url(fonts/source-serif-4-latin-600-italic.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(fonts/source-serif-4-latin-ext-400-normal.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: italic; font-weight: 400; font-display: swap;
+  src: url(fonts/source-serif-4-latin-ext-400-italic.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: normal; font-weight: 600; font-display: swap;
+  src: url(fonts/source-serif-4-latin-ext-600-normal.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Source Serif 4"; font-style: italic; font-weight: 600; font-display: swap;
+  src: url(fonts/source-serif-4-latin-ext-600-italic.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ---------- Ink and paper ---------- */
+
 :root {
-  --bg: #fbfaf7;
-  --fg: #1d1c1a;
-  --muted: #5d5a54;
-  --line: #d9d5cc;
-  --card: #ffffff;
-  --accent: #a3271b;
-  --accent-fg: #ffffff;
-  --notice: #eef4ea;
-  --error: #fbeceb;
-  --focus: #1a5fb4;
-  color-scheme: light dark;
+  --paper: #fbfaf6;
+  --ink: #161514;
+  --muted: #55524c;   /* 7.6:1 on paper */
+  --rule: #cfcbc2;
+  --field: #ffffff;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #181715;
-    --fg: #ebe8e1;
-    --muted: #b0aca3;
-    --line: #3b3934;
-    --card: #211f1c;
-    --accent: #f08a7c;
-    --accent-fg: #181715;
-    --notice: #1f2a1d;
-    --error: #3a1e1c;
-    --focus: #8ab4f8;
+  :root:not([data-theme="light"]) {
+    --paper: #141413;
+    --ink: #e7e4dc;
+    --muted: #a8a399;  /* 7.4:1 on paper */
+    --rule: #3a3833;
+    --field: #1b1a18;
+    color-scheme: dark;
   }
 }
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+:root[data-theme="dark"] {
+  --paper: #141413;
+  --ink: #e7e4dc;
+  --muted: #a8a399;
+  --rule: #3a3833;
+  --field: #1b1a18;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
 body {
-  margin: 0; background: var(--bg); color: var(--fg);
-  font: 1.0625rem/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Source Serif 4", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  hanging-punctuation: first;
+  text-rendering: optimizeLegibility;
 }
-main, header.site, footer.site { max-width: 46rem; margin: 0 auto; padding: 0 1rem; }
-main { padding-bottom: 2rem; }
-a { color: var(--accent); text-underline-offset: 0.15em; }
-a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 3px solid var(--focus); outline-offset: 2px;
+@media (min-width: 40em) { body { font-size: 1.15rem; } }
+
+/* One reading column, a narrow measure. */
+header.site, main, footer.site { max-width: 34rem; margin: 0 auto; padding: 0 1.1rem; }
+main { padding-bottom: 2.5rem; }
+
+/* Labels and section heads in small caps, slightly tracked. */
+h2, h3, legend, .field label, form > label, th, .tag, .pager, button, .button,
+.tips h2, footer.site, header.site nav, summary {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
 }
+
+/* ---------- Links and focus ---------- */
+
+a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.17em; text-decoration-color: var(--muted); }
+a:hover { text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .skip { position: absolute; left: -10000px; }
-.skip:focus { left: 1rem; top: 1rem; background: var(--card); padding: 0.5rem; z-index: 1; }
+.skip:focus { left: 1rem; top: 0.5rem; background: var(--paper); padding: 0.25rem 0.5rem; z-index: 2; }
 
-header.site { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; padding-top: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; }
-.brand { font-weight: 700; font-size: 1.15rem; color: var(--fg); text-decoration: none; margin-right: auto; }
-header.site nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
-header.site nav a { color: var(--fg); }
-footer.site { border-top: 1px solid var(--line); padding-top: 1rem; padding-bottom: 2rem; color: var(--muted); font-size: 0.9rem; }
-footer.site a { color: var(--muted); }
+/* ---------- Masthead and footer ---------- */
 
-h1 { font-size: 1.6rem; line-height: 1.25; margin: 0.5rem 0 1rem; }
-h2 { font-size: 1.2rem; margin: 1.75rem 0 0.5rem; }
-h3 { font-size: 1.05rem; margin: 1.25rem 0 0.5rem; }
-.hero h1 { font-size: 1.9rem; }
-.lede { font-size: 1.15rem; }
+header.site {
+  padding-top: 1.6rem;
+  padding-bottom: 0.9rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--rule);
+}
+.brand {
+  display: block;
+  font-size: 1.45rem;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+header.site nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 1.15rem;
+  margin-top: 0.45rem;
+  font-size: 1.02rem;
+}
+header.site nav a { text-decoration: none; }
+header.site nav a:hover { text-decoration: underline; }
+
+footer.site {
+  margin-top: 1rem;
+  padding-top: 1.75rem;
+  padding-bottom: 2.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  text-align: center;
+}
+/* The one ornament: our own small open-book mark. */
+footer.site::before {
+  content: "";
+  display: block;
+  width: 3rem;
+  height: 1rem;
+  margin: 0 auto 1.1rem;
+  background: var(--muted);
+  -webkit-mask: url(ornament.svg) center / contain no-repeat;
+  mask: url(ornament.svg) center / contain no-repeat;
+}
+footer.site p { margin: 0.2rem 0; }
+
+/* ---------- Headings and text ---------- */
+
+h1 { font-size: 1.85rem; font-weight: 400; line-height: 1.2; margin: 0 0 1.1rem; letter-spacing: -0.005em; }
+h1 cite { font-style: italic; }
+.hero h1 { font-size: 2.05rem; }
+h2 { font-size: 1.25rem; font-weight: 600; line-height: 1.3; margin: 2.2rem 0 0.55rem; }
+h3 { font-size: 1.08rem; font-weight: 600; margin: 1.6rem 0 0.4rem; }
+p { margin: 0 0 0.85rem; }
+.lede { font-size: 1.12em; }
 cite { font-style: italic; }
-.by, .kind, .year, .hint { color: var(--muted); }
-.hint { font-size: 0.92rem; margin: 0.25rem 0 0; }
-.quiet { margin-top: 2rem; font-size: 0.95rem; }
+.by, .year, .kind, .hint, .areas { color: var(--muted); }
+.hint { font-size: 0.92em; margin: 0.25rem 0 0; line-height: 1.45; }
+.work { font-size: 1.08em; }
+strong { font-weight: 600; }
+code { font-size: 0.86em; word-break: break-all; }
+blockquote.note { margin: 0.75rem 0; padding-left: 1rem; border-left: 1px solid var(--rule); font-style: italic; }
 
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem 1rem; margin: 1rem 0; }
-.card p { margin: 0.35rem 0; }
-.work { font-size: 1.1rem; }
-.notice, .error { border-radius: 6px; padding: 0.6rem 1rem; margin: 1rem 0; }
-.notice { background: var(--notice); }
-.error { background: var(--error); border-left: 4px solid var(--accent); }
-.notice p, .error p { margin: 0.25rem 0; }
-blockquote.note { margin: 0.5rem 0; padding-left: 0.75rem; border-left: 3px solid var(--line); }
+/* Sections are separated by thin rules rather than boxes. */
+main > section + section, .tools, .quiet { border-top: 1px solid var(--rule); padding-top: 0.35rem; }
+.card { margin: 0.6rem 0 1.4rem; }
+.card p { margin: 0.2rem 0; }
+.quiet { margin-top: 2rem; font-size: 0.97em; }
 
-.tips { border: 1px solid var(--line); border-radius: 6px; padding: 0.25rem 1rem 0.75rem; margin: 1.5rem 0; background: var(--card); }
-.tips h2 { margin-top: 0.75rem; font-size: 1.05rem; }
-.tips ul { padding-left: 1.2rem; margin: 0.5rem 0; }
-.tips.compact { font-size: 0.95rem; }
+/* Notices: monochrome, set off by a rule, not by colour. */
+.notice, .error { margin: 1.1rem 0; padding: 0.1rem 0 0.1rem 0.9rem; border-left: 2px solid var(--ink); }
+.error { border-left-style: double; border-left-width: 4px; font-style: italic; }
+.notice p, .error p { margin: 0.3rem 0; }
 
-form { margin: 1rem 0; }
-form.inline { display: inline; margin: 0 0.5rem 0 0; }
-.field { margin: 0 0 1rem; }
-.field label, form > label { display: block; font-weight: 600; }
-input[type=text], input:not([type]), input[type=search], input[type=email], input[type=url], input[type=date],
-input[type=time], input[type=number], input[type=password], select, textarea {
-  display: block; width: 100%; margin-top: 0.3rem; padding: 0.55rem 0.6rem; font: inherit; font-weight: 400;
-  color: var(--fg); background: var(--card); border: 1px solid var(--muted); border-radius: 4px;
-}
-fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 1rem; padding: 0.5rem 1rem 0.75rem; }
-legend { font-weight: 600; padding: 0 0.25rem; }
-label.radio { display: block; font-weight: 400; padding: 0.3rem 0; }
-.row { display: flex; gap: 1rem; flex-wrap: wrap; }
+/* How-to-meet advice: a quiet aside between rules. */
+.tips { margin: 2rem 0; padding: 0.2rem 0 0.6rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.tips h2 { margin-top: 0.9rem; font-size: 1.12rem; }
+.tips ul { margin: 0.4rem 0 0.6rem; padding-left: 1.15rem; }
+.tips li { margin: 0.15rem 0; }
+.tips.compact { font-size: 0.97em; }
+
+/* ---------- Lists that read like an index ---------- */
+
+ol.steps { padding-left: 1.3rem; }
+ol.steps li { margin-bottom: 0.45rem; }
+
+ul.results, ul.meetings, ul.board, ul.people { list-style: none; margin: 0.6rem 0 1.2rem; padding: 0; }
+ul.results li, ul.meetings li, ul.board li { padding: 0.45rem 0; border-bottom: 1px solid var(--rule); line-height: 1.45; }
+ul.results li:first-child, ul.meetings li:first-child, ul.board li:first-child { border-top: 1px solid var(--rule); }
+
+/* Search results and meetings: the whole entry is the link; the title carries the underline. */
+ul.results a, ul.meetings a { display: block; text-decoration: none; color: var(--ink); }
+ul.results a cite, ul.meetings a cite { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.17em; text-decoration-color: var(--muted); }
+ul.results a:hover cite, ul.meetings a:hover cite { text-decoration-color: currentColor; }
+
+/* Meetings: title and creator, then date, place, and format on the same line. */
+ul.meetings br { display: none; }
+ul.meetings .work { font-size: 1em; }
+ul.meetings .work::after { content: " \2014  "; color: var(--muted); }
+
+/* Open board: title, creator, region, then the invitation, on one line. */
+ul.board li > p { display: inline; margin: 0; }
+ul.board .work { font-size: 1em; }
+ul.board .areas::before { content: " \2014  "; }
+ul.board li > p:last-child::before { content: " \00B7  "; color: var(--muted); }
+
+ul.people li { padding: 0.15rem 0; }
+.tag { color: var(--muted); font-size: 0.95em; }
+.pager { display: flex; gap: 1.5rem; margin: 1.2rem 0; }
+
+/* ---------- Forms ---------- */
+
+form { margin: 1.1rem 0; }
+form.inline { display: inline; margin: 0 0.9rem 0 0; }
+.field { margin: 0 0 1.1rem; }
+.field label, form > label { display: block; font-size: 1.02rem; }
+.row { display: flex; flex-wrap: wrap; gap: 0 1.1rem; }
 .row .field { flex: 1 1 9rem; }
-.search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
-.search .field, .search label { flex: 1 1 14rem; margin: 0; }
+.search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.4rem 1rem; }
+.search .field, .search > label { flex: 1 1 14rem; margin: 0; }
 
-button, .button {
-  display: inline-block; font: inherit; font-weight: 600; padding: 0.55rem 1.1rem; border-radius: 4px; cursor: pointer;
-  background: var(--accent); color: var(--accent-fg); border: 1px solid var(--accent); text-decoration: none; margin: 0.25rem 0;
+input[type=text], input:not([type]), input[type=search], input[type=email], input[type=url],
+input[type=date], input[type=time], input[type=number], input[type=password], select, textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+  font-variant-caps: normal;
+  letter-spacing: normal;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--muted);
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
 }
-button.secondary, .button.secondary { background: transparent; color: var(--accent); }
-button.danger { background: transparent; color: var(--accent); border-style: dashed; }
-button.link { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; font-weight: 400; }
-.pow-status { color: var(--muted); font-size: 0.9rem; min-height: 1.2em; }
+textarea { line-height: 1.45; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
-ul.results, ul.meetings, ul.board, ul.people { list-style: none; padding: 0; margin: 0.5rem 0; }
-ul.results li, ul.meetings li, ul.board li { border-bottom: 1px solid var(--line); padding: 0.6rem 0; }
-ul.results a, ul.meetings a { display: block; text-decoration: none; color: var(--fg); }
-ul.results a:hover cite, ul.meetings a:hover .work { text-decoration: underline; }
-ul.board p { margin: 0.2rem 0; }
-.areas { color: var(--muted); font-size: 0.95rem; }
-ul.people li { padding: 0.25rem 0; }
-.tag { font-size: 0.8rem; border: 1px solid var(--line); border-radius: 3px; padding: 0 0.3rem; color: var(--muted); }
-ol.steps li { margin-bottom: 0.5rem; }
-.pager { display: flex; gap: 1rem; margin: 1rem 0; }
-.tools { border-top: 2px solid var(--line); margin-top: 2rem; }
+/* The rule sits above the legend rather than through it. */
+fieldset { margin: 0 0 1.2rem; padding: 0; border: 0; min-width: 0; }
+legend { display: block; float: left; width: 100%; padding: 0.55rem 0 0.25rem; margin-bottom: 0.2rem; border-top: 1px solid var(--rule); font-size: 1.02rem; }
+legend + * { clear: both; }
+label.radio { display: block; padding: 0.22rem 0; font-variant-caps: normal; letter-spacing: normal; }
+input[type=radio], input[type=checkbox] { accent-color: var(--ink); width: 1rem; height: 1rem; margin: 0 0.45rem 0 0; vertical-align: -0.12em; }
 
-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; display: block; overflow-x: auto; }
-th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-code { font-size: 0.85em; word-break: break-all; }
+/* Buttons are words: no fill, no rounding. */
+button, .button {
+  display: inline-block;
+  margin: 0.3rem 1.2rem 0.3rem 0;
+  padding: 0.1rem 0 0.15rem;
+  font: inherit;
+  font-size: 1.08rem;
+  font-weight: 600;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  text-decoration: none;
+  cursor: pointer;
+}
+button::after, .button::after { content: " \2192"; font-variant-caps: normal; }
+button.secondary, .button.secondary, button.danger { font-weight: 400; border-bottom-color: var(--muted); }
+button.secondary::after, .button.secondary::after, button.danger::after,
+button.link::after, .theme-toggle::after { content: none; }
+button.danger { font-style: italic; }
+button.link {
+  margin: 0; padding: 0; border: 0;
+  font-size: inherit; font-weight: 400; font-variant-caps: normal; letter-spacing: normal;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.17em; text-decoration-color: var(--muted);
+}
+button:hover, .button:hover { border-bottom-width: 2px; padding-bottom: 0.05rem; }
+button.link:hover { border-bottom-width: 0; padding-bottom: 0; text-decoration-color: currentColor; }
+.theme-toggle {
+  margin: 0 0 0 auto; padding: 0; border: 0;
+  font-size: inherit; font-weight: 400; color: var(--muted);
+}
+.theme-toggle:hover { color: var(--ink); border-bottom-width: 0; padding-bottom: 0; }
+.pow-status { color: var(--muted); font-size: 0.92em; min-height: 1.3em; font-style: italic; }
+
+details { margin: 1rem 0; }
+summary { cursor: pointer; font-size: 1.02rem; }
+
+/* ---------- Tables (privacy page, admin) ---------- */
+
+table { border-collapse: collapse; width: 100%; font-size: 0.93em; line-height: 1.4; display: block; overflow-x: auto; margin: 0.8rem 0 1.2rem; }
+th, td { text-align: left; vertical-align: top; padding: 0.4rem 0.6rem 0.4rem 0; border-bottom: 1px solid var(--rule); }
+th { font-weight: 600; border-bottom-color: var(--muted); }
 .admin { margin-bottom: 2rem; }
+
+/* ---------- Odds and ends ---------- */
 
 .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 
-@media (min-width: 52rem) {
-  .split { display: grid; grid-template-columns: 1fr 16rem; gap: 2rem; align-items: start; }
-  .split .tips { margin-top: 1rem; }
+@media print {
+  header.site nav, footer.site::before, .theme-toggle, form { display: none; }
+  body { background: #fff; color: #000; }
 }
-details summary { cursor: pointer; font-weight: 600; margin: 0.5rem 0; }

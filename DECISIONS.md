@@ -84,3 +84,9 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-39. `www` uses A/AAAA records, not a CNAME.** `fly certs add` recommends A and AAAA records pointing at the app's shared IPv4 and dedicated IPv6 for both names. The app redirects `www` to the bare domain.
 
 **D-40. Shared IPv4, dedicated IPv6 (both free).** A dedicated IPv4 costs about $2/month and isn't needed for HTTPS on Fly.
+
+**D-41. Typography: Source Serif 4, self-hosted. License: SIL Open Font License 1.1.** It is a book serif designed for long reading, with true italics and small caps, and it is free to embed and redistribute. The woff2 files (latin and latin-ext subsets, regular and semibold, roman and italic: about 170 KB in all, loaded only as needed) come from the Fontsource npm package `@fontsource/source-serif-4@5.3.1`. They are copied into `public/fonts/` with the license text (`public/fonts/OFL.txt`). No font service is contacted. The CSP gained only `font-src 'self'`.
+
+**D-42. Visual design: text-first, monochrome, book-style serif typography, written from scratch.** One serif, one narrow centered column, ink on paper, small caps for labels and headings, thin rules instead of boxes, underlined links, and buttons set as words. These are general principles of book design. The site has its own masthead, navigation, and layout, and one ornament of its own: a small open-book mark above the footer.
+
+**D-43. Light and dark themes follow the system, with a small toggle.** A ~1 KB script cycles auto, light, and dark, and remembers the choice in this browser only (localStorage). Without JavaScript, the site simply follows the system setting and the toggle stays hidden.

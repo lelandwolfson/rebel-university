@@ -17,6 +17,7 @@ export function layout(ctx, { title, body, noindex = false }) {
 ${noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
 <link rel="stylesheet" href="${ctx.app.asset('style.css')}">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<script src="${ctx.app.asset('theme.js')}"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -27,6 +28,7 @@ ${noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
     <a href="/board">${t('nav.board')}</a>
     <a href="/meetings">${t('nav.meetings')}</a>
     <a href="/how-to-meet">${t('nav.howto')}</a>
+    <button type="button" class="theme-toggle" hidden>Theme</button>
   </nav>
 </header>
 <main id="main">
