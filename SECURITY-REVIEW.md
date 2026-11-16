@@ -149,3 +149,96 @@ It used an in-memory store and a mocked model (no real API calls), so the real m
 - A crafted held work can still persuade the model to remove a legitimate held work. The work goes to the trash (restorable for 7 days), the removal is logged, and it's shown to the owner.
 - A model reason could paraphrase report text into the digest.
 - Trashed items keep their data for 7 days past removal, as the privacy page says.
+
+---
+
+# Third full review (fourth pass overall): 2026-11-16
+
+**Method:** three fresh agents, each given THREAT-MODEL.md and the code, with different focuses. None saw this file, DECISIONS.md, or git history before reporting.
+1. **New features:** everything added since the second review (AI moderation, the Anthropic call, the digest, trash and restore, the hourly log line, the restyle).
+2. **Core flows:** the core flows, reviewed from scratch.
+3. **Privacy and deployment:** the privacy promises against reality, and the deployed setup.
+
+They attacked a local copy. On the live site they made read-only checks only (headers, TLS, status codes, public pages, read-only Fly commands). No real Anthropic calls were made. Fixes have tests in `test/review3.test.js` and in updated tests in `test/moderation.test.js` and `test/review2.test.js`.
+
+**Findings:** 36 in total: 0 high, 8 medium, 21 low, 7 info. "C" means the reviewer confirmed it by running it.
+
+### Medium
+| # | Finding | C | Outcome |
+|---|---|---|---|
+| R2-1 | **Anyone could fill the never-evicted limiter map and block all posting.** Joins to a closed meeting created counters with no cost. | yes | **Fixed at the cause** (see below) |
+| R2-2 | **The board leaked 50 km proximity to readers who chose 25 km.** | yes | **Fixed:** the board uses 25 km (owner's choice) |
+| R1-1 | **Restore attached restored items to a look-alike work with a phishing link.** | yes | **Fixed:** restore refuses look-alikes; held links are hidden from attendees |
+| R1-2 | **Squatting a title got other readers' requests auto-removed by the AI.** | yes | **Fixed:** the AI never removes a work that carries other people's requests |
+| R1-3 | **21 spam works stalled AI moderation every day.** | yes | **Fixed:** over the cap, no action is taken and the owner is told once, with no daily loop |
+| R1-4 | **Report text reached the digest reader as a second-order injection, with names.** | yes (pass-through) | **Fixed:** the digest carries codes and counts only (owner's choice) |
+| R3-1 | **A seized running server can link an address to a display name, or to a work and city.** | yes | **Partly fixed:** nothing kept after someone leaves; the privacy page now says exactly this. Rest accepted (D-58) |
+| R3-2 | **Report text sent to Anthropic can contain names and places**, though the page said otherwise. | yes | **Privacy page corrected** |
+
+### Low and info
+
+**R1, new features**
+- **Fixed:**
+  - Safety reports are reviewed first.
+  - The race between AI moderation and owner approval is closed.
+  - Restore refuses expired data and removed parent works.
+  - Approvals are capped at 10 per run.
+  - Phone-number scrubbing catches any separator.
+  - The digest is indistinguishable from any other 404 and has no lockout.
+  - Only exact asset versions are cached as immutable.
+  - Review records are redacted when their items go.
+  - The SDK base URL and log level are set explicitly.
+  - T13 numbers corrected.
+- **Accepted:** the instruction-like regex is weak; it is a backstop, alongside the approval cap and number scrubbing. Batches can be split to use up the call budget; cost stays bounded. Pausing doesn't stop a run already in progress.
+
+**R2, core flows**
+- **Fixed:**
+  - Rejoin blocks last until after the meeting.
+  - The coarse tier is checked first.
+  - `*` counters are pinned.
+  - Board views are cached.
+  - Budgets no longer reset daily, and clients can't see a rotation.
+  - Proof-of-work is bound to its form.
+  - Addresses are normalized, and invalid headers ignored.
+- **Accepted:**
+  - The meeting-fill attack (D-57).
+  - A match count narrows a reader's distance; inherent, and now stated.
+  - A flood can evict the admin-login counter; the secret is 32+ characters.
+
+**R3, privacy and deployment**
+- **Fixed:**
+  - The write-ahead log is scrubbed after more writes, including inserts.
+  - Run times are rounded to the hour.
+  - Backups are pruned by age.
+  - umask 077 in the container.
+  - Canonical host redirect (owner's choice).
+  - .dockerignore tightened.
+  - The privacy page now names Fly.io, the localStorage theme key, the in-memory email cap, the backup window for trash items, and freed disk space.
+- **For the owner (OWNER-TODO.md):** SPF, DMARC and CAA DNS records; the HSTS preload decision.
+- **Accepted:** sequential ids in admin-only tables (D-59). A backup restore undoes recent deletions; DEPLOY.md now warns about this. `/admin` shows that an admin exists, by design.
+
+## The recurring class, and its cause
+
+**Per-address limits held in memory** showed up in every review:
+- **Pass 1:** IPv6 rotation and a spoofed client-IP header.
+- **Pass 2:** eviction erased the guard counters; the rejoin block lapsed at key rotation.
+- **Pass 3:**
+  - filling the guard map blocked everyone;
+  - the daily rotation reset budgets, and clients could see when it happened;
+  - the rejoin block lapsed;
+  - floods reset other limits.
+
+Each earlier fix patched an instance. This time the causes were removed (DECISIONS.md D-53, THREAT-MODEL.md T14):
+- no rotation that budgets depend on;
+- counters only for valid actions;
+- per-source ownership with caps and a reserve, so no single source can exhaust the shared map;
+- the coarse tier checked first;
+- proof-of-work bound to the action.
+
+A second pattern: **privacy wording ran ahead of the code** (pass 2: backup retention; pass 3: memory linkage, AI text, the host). The privacy page was audited claim by claim this time.
+
+**Earlier fixes that could be bypassed:**
+- Pass 2's fail-closed guard map was itself a denial of service. Replaced by owner quotas.
+- Pass 2's "check yesterday's key too" fix for rejoin blocks still lapsed. Replaced by stable keys and a block that lasts until after the meeting.
+- The first moderation pass's "over the cap, items stay queued" fix looped forever. Revised.
+- The first moderation pass's "restore merges into a same-titled work" fix let an attacker capture restores. Revised.

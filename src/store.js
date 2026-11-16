@@ -210,6 +210,7 @@ export class Store {
     this.version++;
     this.sql(`INSERT INTO requests (id, token_hash, work_id, place_id, online_only, format, radius_km, email_enc, status, created_hour, expires_hour)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, tokenHash, workId, placeId ?? null, onlineOnly ? 1 : 0, format, radiusKm, emailEnc ?? null, status, h, h + 90 * 24);
+    this.scrub(); // don't leave insertion order in the write-ahead log
     return this.getRequest(id);
   }
   getRequest(id) { return toRequest(this.sql('SELECT * FROM requests WHERE id = ?').get(id)); }
@@ -243,12 +244,14 @@ export class Store {
   // ---- meetings
   createMeeting({ id, workId, placeId, format, startsUtc, tz, venue, videoUrl, note, organizerTokenHash, organizerName }) {
     const h = this.hour();
-    return this.tx(() => {
+    const m = this.tx(() => {
       this.sql(`INSERT INTO meetings (id, work_id, place_id, format, starts_utc, tz, venue, video_url, note, status, created_hour, delete_after_hour)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`).run(id, workId, placeId ?? null, format, startsUtc, tz, venue, videoUrl, note, h, toHour(startsUtc) + 30 * 24);
       this.sql('INSERT INTO attendees (id, meeting_id, token_hash, display_name, is_organizer) VALUES (?, ?, ?, ?, 1)').run(rid(), id, organizerTokenHash, organizerName);
       return this.getMeeting(id);
     });
+    this.scrub();
+    return m;
   }
   getMeeting(id) { return toMeeting(this.sql('SELECT * FROM meetings WHERE id = ?').get(String(id))); }
   updateMeeting(id, { format, placeId, startsUtc, tz, venue, videoUrl, note }) {
@@ -276,6 +279,7 @@ export class Store {
   addAttendee(meetingId, tokenHash, displayName) {
     const id = rid();
     this.sql('INSERT INTO attendees (id, meeting_id, token_hash, display_name, is_organizer) VALUES (?, ?, ?, ?, 0)').run(id, meetingId, tokenHash, displayName);
+    this.scrub();
     return id;
   }
   attendeeByToken(tokenHash) {
@@ -296,6 +300,7 @@ export class Store {
   // ---- reports
   addReport(meetingId, reason, text) {
     this.sql('INSERT INTO reports (id, meeting_id, reason, text, created_hour) VALUES (?, ?, ?, ?, ?)').run(rid(), meetingId, reason, text, this.hour());
+    this.scrub();
   }
   reports() {
     return this.sql(`SELECT r.*, m.status, w.title FROM reports r JOIN meetings m ON m.id = r.meeting_id JOIN works w ON w.id = m.work_id

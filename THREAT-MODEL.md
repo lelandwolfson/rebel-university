@@ -19,7 +19,7 @@ Written before the code. Updated after the adversarial review; changes are marke
 | Optional email | DB | Tell the person a match exists | AES-256-GCM encrypted with a key from the environment. Deleted when the request closes or expires. |
 | Display name per meeting | DB | Recognition inside one meeting | Shown only to joined attendees. Not linked to anything else. Deleted 30 days after the meeting. |
 | Venue, video link, organizer note | DB | Running the meeting | Shown only to joined attendees. Deleted 30 days after the meeting. |
-| IP address | Memory only | Rate limiting and proof-of-work difficulty | HMAC'd (IPv4 per address, IPv6 per /64) with a key that lives in memory and rotates daily. Never written to disk. Counters expire within 24 hours. |
+| IP address | Memory only | Rate limiting and proof-of-work difficulty | HMAC'd (IPv4 per address, IPv6 per /64 and /48) with a random key made at process start, memory only. Never written to disk. Counters expire within a day (removal blocks: a day after the meeting). *(Third full review: the daily rotation was removed because it reset budgets at a moment clients could see.)* |
 | Reports | DB | Abuse handling | Admin only. Deleted with the meeting. |
 | Admin audit log | DB | Accountability | No IPs. Pruned after 180 days. |
 | Timestamps | DB | Expiry | Rounded to the hour to blur timing correlation. Row ids are random so order doesn't leak either *(review)*. |
@@ -59,7 +59,7 @@ People now choose how far they will travel: 25, 50, 100, or 200 km. Two in-perso
 1. **Proof-of-work scales with the area a probe covers.** Difficulty is multiplied by `max(1, (r/50)²)`: ×1 for 25 and 50 km, ×4 for 100 km, ×16 for 200 km. The useful reach of any probe is at most its own limit, so the work spent per km² searched is at least today's for every reader. The difficulty is checked at submit time against the distance actually submitted, so a cheap challenge can't be used for a wide request.
 2. **A distance change counts as a probe.** It needs its own proof-of-work at the new distance's difficulty. It counts against the same 3-per-work-per-connection-per-day budget. It is also limited to 3 changes per request per day, whatever the connection.
 3. **The per-connection budget stays at 3 probes per work per day, at any distance.** On IPv6 it also applies per /48, at 4 times the per-/64 limit, so one free tunnel can't multiply it 65,536 times *(second review)*. The area searchable per connection per day rises only against readers who chose 100 or 200 km, and they chose that exposure. The CPU cost per km², the binding cost for an attacker who rotates addresses, does not fall for any reader.
-4. **The distance is never public.** It isn't shown on the board, the meeting pages, or the admin page. It appears only on the request's own private page. Board presence uses a fixed 50 km rule, so watching the board reveals nothing about anyone's chosen distance *(second review)*.
+4. **The distance is never shown publicly.** It isn't on the board, the meeting pages, or the admin page; only on the request's own private page. Board presence uses a fixed 25 km rule, the smallest distance, so the board never reveals more than a match count does *(second review; 25 km since the third full review, which showed 50 km leaked proximity for 25 km readers)*. Honest limit: a prober's own match count can narrow a reader's chosen distance, because matching uses both people's limits. That is inherent to the min-of-both rule.
 
 *(Second review)* An honest limit on point 1: proof-of-work is cheap for a determined attacker with native code (about 0.02 core-seconds per 50 km probe). "No cheaper than before" is true, but proof-of-work is a speed bump. The binding limits are the per-/64 and per-/48 budgets, which never get evicted.
 
@@ -129,7 +129,7 @@ Cost to legitimate users: a 200 km request takes about 16 times the base proof-o
 | A03 Injection | Parameterized SQL only. All HTML output escaped by a tagged template that escapes by default. URLs validated before use in `href`. Email headers built from fixed text only. |
 | A04 Insecure design | This document; minimal data; capability links. |
 | A05 Security misconfiguration | Strict CSP (`default-src 'none'`), security headers on every response, generic error pages, no directory listing, non-root container. |
-| A06 Vulnerable components | One runtime dependency (nodemailer, only loaded when SMTP is set). Pinned versions, lockfile, `npm audit` in CI. |
+| A06 Vulnerable components | Two direct runtime dependencies (nodemailer, loaded only when SMTP is set; @anthropic-ai/sdk, loaded only when an API key is set), nine packages in all. Pinned versions, lockfile, `npm audit` in CI, Dependabot with a 14-day cooldown. |
 | A07 Identification failures | No accounts. Admin as in T5. |
 | A08 Integrity failures | Signed (HMAC) hidden form values for work selection and PoW challenges; pinned CI actions. |
 | A09 Logging failures | Admin audit log. Errors logged without request bodies, paths, or IPs. |
@@ -161,12 +161,32 @@ Only the fields listed on the privacy page are sent: no emails, private-link tok
 
 ### T12. The digest endpoint (`GET /admin/digest.json`)
 A new read-only surface for an outside reader, such as a scheduled cloud task.
-- **Off unless `DIGEST_TOKEN`** (32 or more characters) is set. It is a bearer token compared in constant time, with no cookies involved, so CSRF doesn't apply. Rate limited per address. Unauthenticated requests get a 404, so the endpoint doesn't reveal it exists.
-- **Returns only:** site status, uptime, last backup time, whether AI moderation is on, and the latest run's counts, actions, and flagged items (type, reason, and a title only when it is already public: approved works and meeting works) *(review)*.
+- **Off unless `DIGEST_TOKEN`** (32 or more characters) is set. It is a bearer token compared in constant time, with no cookies involved, so CSRF doesn't apply. Without a valid token the response is the site's ordinary HTML 404, whether or not a token is configured, so nothing reveals the endpoint or the configuration. There is no failure lockout (it let others lock the reader out); guessing a 32+ character token is hopeless. Successful reads are rate limited *(third full review)*.
+- **Returns only:** site status, uptime, last backup time, whether AI moderation is on, and the latest run's counts, actions, and flagged items as fixed codes, report categories, and titles only when already public. **No free text** from the model or anyone else, so a report can't carry instructions or names to an AI reading the digest *(third full review)*.
 - Failed attempts count toward a lockout per address and /48. Successful reads have their own limit, so a guesser can't lock the real reader out *(review)*.
 - **Never returns:** emails, tokens, IP data, display names, venues, links, report text, meeting ids, or trash ids.
 - **It changes nothing.** The token works on no other route: it isn't an admin session and can't call admin actions.
-- Residual risk: the model's short reasons appear in the digest, and a reason could paraphrase a report. Phone-like numbers are scrubbed, and the prompt forbids names, but nothing in code can remove a paraphrase.
+- Residual risk: the admin Moderation page still shows the model's short reasons, which could paraphrase a report. That page is behind the admin login.
 
 ### T13. Cost and availability
-At most one model call a day (40 items, 4,000 output tokens), plus admin "run now". If the key is missing or the API fails, nothing changes and the site works as before. A spending cap on the API key limits the worst case (OWNER-TODO.md).
+At most one completed run a day: up to 40 items and 8 calls (batches split on refusal), each up to 16,000 output tokens, plus retries after errors every 6 hours and admin "run now". If the key is missing or the API fails, nothing changes and the site works as before. A spending cap on the API key limits the worst case (OWNER-TODO.md).
+
+## Third full review (added after it)
+
+### T14. Rate limits that can be reset or exhausted
+The same class of bug appeared in every review: per-address limits held in memory could be reset or exhausted for everyone. The causes are now removed rather than patched (`src/ratelimit.js`):
+- one memory-only key per process, with no daily rotation;
+- guard counters owned per source (an IPv4 /24 or IPv6 /48), each capped, with reserved room for light users when the map is full;
+- counters created only after an action is known to be valid;
+- the coarse tier checked before the fine tier;
+- proof-of-work bound to the form it was issued for;
+- non-address headers ignored.
+
+### T15. Look-alike works and restore
+Hand-entered works are matched by normalized title and creator, so someone can register a title first. Restore refuses to join a look-alike with a different link or review state, and refuses to bring back a work that was itself removed, or anything past its deletion date. Attendees never see the link of a work still held for review. The AI never removes a held work that carries other people's requests.
+
+### T16. One canonical host
+Every host other than rebeluniversity.org (www, the fly.dev address, a forged Host header) redirects to it. The health check answers on any host.
+
+### T17. The host sees connections
+TLS ends at Fly.io's edge, so Fly sees IP addresses and request paths, including private links. This is stated on the privacy page. The app itself keeps no request logs.

@@ -109,22 +109,22 @@ export function privacy(ctx) {
 <tr><td>The work you name (title, author or creator; for hand-entered works, an optional link)</td><td>It is the basis of a match</td><td>When no request or meeting uses it any more</td></tr>
 <tr><td>Your request: the work, the city you picked (or "online only"), the meeting format, how far you will travel, the hour it was posted</td><td>To find matches</td><td>When you close it, or 90 days after posting</td></tr>
 <tr><td>A hash of your private link</td><td>To recognize the link when you return. We cannot turn the hash back into the link.</td><td>With the request or meeting</td></tr>
-<tr><td>Your email address, if you give one</td><td>To tell you a match exists. Encrypted. Never shown to anyone. Our emails never include the work's title or anything anyone typed.</td><td>When you remove it, close the request, or the request expires</td></tr>
+<tr><td>Your email address, if you give one</td><td>To tell you a match exists. Encrypted. Never shown to anyone. Our emails never include the work's title or anything anyone typed. To cap emails at 3 a day per address, a scrambled form of the address is counted in memory for a day.</td><td>When you remove it, close the request, or the request expires</td></tr>
 <tr><td>Meetings: work, city, date, time zone, format, venue, video link, organizer note</td><td>To run the meeting</td><td>30 days after the meeting date</td></tr>
 <tr><td>Your display name in a meeting</td><td>So the people in that meeting can recognize each other</td><td>When you leave, or 30 days after the meeting</td></tr>
 <tr><td>Reports: the meeting, a reason, and optional text. Nothing about who sent it.</td><td>To handle abuse</td><td>When dismissed, or with the meeting</td></tr>
 <tr><td>Removed requests, meetings, and works</td><td>So the admin can undo a removal</td><td>7 days after removal</td></tr>
-<tr><td>Review records: what the assistant or admin did, with titles and reasons</td><td>Accountability</td><td>The last 60 daily runs; the admin log after 180 days</td></tr>
-<tr><td>Backups of the database</td><td>To recover from failure</td><td>Within 12 days (daily backups kept 7 days, inside disk snapshots kept 5 days)</td></tr>
+<tr><td>Review records: what the assistant or admin did, with titles and reasons</td><td>Accountability</td><td>The last 60 daily runs (titles and reasons are cleared once the item they describe is deleted); the admin log after 180 days</td></tr>
+<tr><td>Backups of the database</td><td>To recover from failure</td><td>Within 12 days of deletion (daily backups kept 7 days, inside disk snapshots kept 5 days); for items removed to the trash, 7 days later than that</td></tr>
 </tbody>
 </table>
-<p>Times are stored rounded to the hour, and records have random ids, so their order reveals nothing. There are no accounts, so nothing ties your requests to each other, or a display name in one meeting to any other. The database does not record which request a meeting was started from or who joined from which request. But a meeting is stored with the organizer's city and work, so where only one person has asked for a work in a city, someone holding the database could guess that they started it.</p>
+<p>Times are stored rounded to the hour, and requests, meetings, attendees, works, and reports have random ids, so their order reveals nothing. Deleted rows are removed from the database and its write-ahead log right away; as on any disk, freed space can hold fragments until it is reused. There are no accounts, so nothing ties your requests to each other, or a display name in one meeting to any other. The database does not record which request a meeting was started from or who joined from which request. But a meeting is stored with the organizer's city and work, so where only one person has asked for a work in a city, someone holding the database could guess that they started it.</p>
 
 <h2>What we don't store</h2>
 <ul>
   <li>Your name, unless you type it as a display name.</li>
-  <li>Your IP address. To limit spam we keep short counters in memory, keyed by a scrambled form of the address (for IPv6, of its network prefix). The scrambling key changes every day and is never written to disk; counters expire within 24 hours. To be exact about the limits of this: while the server is running, its memory holds that key, so someone who seized the running machine could work out which addresses recently posted or joined. The counters are kept separate per work and per meeting so they don't link one person's actions together.</li>
-  <li>Logs of the pages you visit.</li>
+  <li>Your IP address. To limit spam we keep short counters in memory, keyed by a scrambled form of the address (for IPv6, of its network prefix). The scrambling key is made at random when the server starts and is never written to disk. Counters expire within a day; the ones that keep a removed person out of a meeting last until a day after that meeting. To be exact about the limits of this: someone who seized the <em>running</em> server could unscramble its memory and learn which addresses recently posted or joined, and could link an address to a display name in a meeting, or to a work and city it asked about, for as long as those counters last. Nothing of this is on disk.</li>
+  <li>Logs of the pages you visit. (Our host, Fly.io, sees connections; see "Other services".)</li>
   <li>Your birth date or any ID.</li>
 </ul>
 
@@ -137,18 +137,19 @@ export function privacy(ctx) {
 </ul>
 
 <h2>Cookies</h2>
-<p>One cookie that protects forms from cross-site forgery. It holds a random value and nothing about you. The admin has a second cookie when signed in.</p>
+<p>One cookie that protects forms from cross-site forgery. It holds a random value and nothing about you. The admin has a second cookie when signed in. If you use the theme switch, your choice (automatic, light, or dark) is saved in your own browser only.</p>
 
 <h2>AI-assisted review</h2>
 <p>Once a day, an AI assistant helps the site admin review two queues: reports sent about meetings, and hand-entered works waiting for review. For that purpose only, the text below is sent to Anthropic, the company that makes the assistant:</p>
 <ul>
-  <li>For reports about a meeting: each report's reason and text (with phone-like numbers removed), and the meeting's work (title, author or creator, kind) and format (in person or video).</li>
+  <li>For reports about a meeting: each report's reason and text as the reporter wrote it (with phone-like numbers removed), and the meeting's work (title, author or creator, kind) and format (in person or video). If a reporter typed a name or a place into a report, that text goes too.</li>
   <li>For a held work: its kind, title, author or creator, and link.</li>
 </ul>
-<p>Never sent: email addresses, private links, IP addresses, display names, venues, video links, organizers' notes, or anything else. The assistant can approve a work that is plainly real (but not one with a link: a person checks links), or move obvious spam works to a trash the admin can restore from for 7 days. It never removes a meeting: every report goes to the admin to decide, with a short summary. Every action is logged with its reason. The assistant has no other access to the site.</p>
+<p>The site never adds anything else: no email addresses, private links, IP addresses, display names, venues, video links, or organizers' notes. Anthropic handles this text under its commercial terms for API customers, which say it isn't used to train models. The assistant can approve a work that is plainly real (but not one with a link: a person checks links), or move obvious spam works to a trash the admin can restore from for 7 days. It never removes a meeting: every report goes to the admin to decide, with a short summary. Every action is logged with its reason. The assistant has no other access to the site.</p>
 
 <h2>Other services</h2>
 <ul>
+  <li>The site runs on <a href="https://fly.io" rel="noopener noreferrer">Fly.io</a>. Encrypted connections end at Fly's servers, so Fly can see visitors' IP addresses and the addresses of the pages they open, including private links. We don't keep request logs; Fly's own handling is set by its privacy policy.</li>
   <li>When you search for a book, our server asks <a href="https://openlibrary.org" rel="noopener noreferrer">Open Library</a>. Your browser does not contact them, so they don't see your address.</li>
   <li>${mail ? 'Emails are sent through our mail provider, which handles the message in transit.' : 'Email notices are currently switched off.'}</li>
   <li>Video links go to whatever service the organizer chose. Their privacy terms apply there.</li>

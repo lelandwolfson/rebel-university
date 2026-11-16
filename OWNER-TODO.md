@@ -2,7 +2,7 @@
 
 Only what is still open. The site is live at https://rebeluniversity.org.
 
-- [ ] **Digest token.** Move `DIGEST_TOKEN` from `~/rebel-university-secrets.txt` into your password manager, then delete that file. It is already staged as a Fly secret and takes effect at the next deploy. Give it only to the cloud task that reads `https://rebeluniversity.org/admin/digest.json` (header `Authorization: Bearer <token>`). It can read that endpoint and nothing else.
+- [ ] **Digest token.** Give it only to the cloud task that reads `https://rebeluniversity.org/admin/digest.json` (header `Authorization: Bearer <token>`). It can read that endpoint and nothing else. The digest has codes and counts only; see DECISIONS.md D-54 for the code list.
 - [ ] **AI moderation key (optional).** Create an Anthropic API key for this site only, with a monthly spending cap:
   1. In the Anthropic Console (console.anthropic.com), create a workspace named `rebel-university` (Settings → Workspaces).
   2. Open that workspace's limits and set a monthly **spend limit**, for example $5. The daily run uses a few cents a month at most.
@@ -15,6 +15,12 @@ Only what is still open. The site is live at https://rebeluniversity.org.
 - [ ] **Email notices (optional).** Pick an SMTP provider and set the `SMTP_*` secrets with `fly secrets set` (see DEPLOY.md). Without them the site works, just without match emails. If you add email, set up SPF/DKIM for the sending domain as your provider instructs.
 - [ ] **Off-site backups (optional).** Backups are on the Fly volume plus Fly's 5-day snapshots. For a copy elsewhere, periodically run `fly ssh sftp get /data/backups/rebel-YYYY-MM-DD.db`. Store them carefully and delete old ones.
 - [ ] **Video without accounts (later).** See DECISIONS.md D-22.
+
+- [ ] **Email DNS records (anti-spoofing).** Nobody can stop strangers from sending email *as* @rebeluniversity.org until these exist. Add at NearlyFreeSpeech:
+  - `TXT` on `@`: `v=spf1 -all` (change it when you add an email provider)
+  - `TXT` on `_dmarc`: `v=DMARC1; p=reject`
+  - `CAA` on `@`: `0 issue "letsencrypt.org"`
+- [ ] **HSTS preload (optional).** The site sends HSTS already. Preloading (hstspreload.org) protects a visitor's very first visit too, but is hard to undo. Decide before adding `preload`.
 
 ## Ongoing
 

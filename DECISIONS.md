@@ -65,7 +65,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 
 **D-30. Video-only and online-only requests store the default distance.** The distance only matters in person, so a sent value is ignored and costs no extra work.
 
-**D-31. The open board uses a fixed rule: nobody for the same work within 50 km, and no video match.** It does not use people's chosen distances, because the board is public and would otherwise reveal them (second review). Someone matched at 150 km by two 200 km readers stays on the board, which still truthfully says nobody is nearby. The board refreshes at most hourly, matching the hour-rounded timestamps.
+**D-31. The open board uses a fixed rule: nobody for the same work within 25 km (50 km before the third full review), and no video match.** It does not use people's chosen distances, because the board is public and would otherwise reveal them (second review). Someone matched at 150 km by two 200 km readers stays on the board, which still truthfully says nobody is nearby. The board refreshes at most hourly, matching the hour-rounded timestamps.
 
 **D-32. Hand-entered works that carry a link are always held for admin review.** The first poster's link is shown to everyone who later meets about that work, so it can't be trusted unreviewed. Works without a link flow as before unless the hold switch is on.
 
@@ -108,3 +108,17 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-51. Approvals of instruction-like text are blocked in code.** The dry run used a stand-in for a model fully taken over by the injection. Every rule held except one: it approved the injection's own title, which has no link. Approvals are now downgraded to a flag when the work's text reads like instructions to a reviewer. False positives only send a real work to the owner. Real titles with words like "Rules" or "Instructions" are tested to pass.
 
 **D-52. Each scheduled tick logs one line of counts and statuses.** For example: `jobs: cleanup ok requests=0 meetings=0 works=0 trash=0 runs=0 audit=0; backup already-today`, and when moderation runs, `moderation: ok reviewed=… approved=… removed=… flagged=…`. This makes it possible to confirm the jobs ran from the logs alone. The line never includes titles, places, names, ids, or other content (tested).
+
+**D-53. The rate limiter was redesigned instead of patched again.** Three reviews found the same class of bug. The new design uses one key per process, guard counters owned per source with caps and a reserve, counters created only for valid actions, and proof-of-work bound to its form. See THREAT-MODEL.md T14.
+
+**D-54. The digest carries codes, not text.** *(Owner's choice.)* The AI reader of the digest should never see free text that a stranger could have shaped. Codes: `spam`, `real_work`, `report`, `unclear`, `instruction_like`, `approval_limit`, `shared_work`, `not_reviewed`, `over_limit`. Full reasons stay on the admin Moderation page.
+
+**D-55. One canonical host.** *(Owner's choice.)* Everything redirects to https://rebeluniversity.org, except `/healthz`, which Fly's health check calls by IP.
+
+**D-56. Board at 25 km.** *(Owner's choice.)* It is the smallest distance anyone can choose, so the board never reveals more than a match count does. A few more works stay listed when the nearest reader is 25-50 km away.
+
+**D-57. Accepted: a meeting can be filled with fake joiners from many addresses.** *(Owner's choice.)* The organizer can close the meeting and remove people. It needs dozens of addresses and affects one meeting. Revisit if it happens.
+
+**D-58. Accepted: the in-memory duplicate check keys on address, work, and place.** Dropping the place would block two people on one network (a household or a campus) from posting the same work for different cities within an hour. A seized running server could pair an address with a city for up to an hour; the privacy page says so.
+
+**D-59. Accepted: admin-only tables (trash, audit log, review runs) keep sequential ids.** They reveal only how many admin actions or runs there were. The privacy page now scopes its "random ids" claim to people's records.

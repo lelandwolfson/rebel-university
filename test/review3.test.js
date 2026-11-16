@@ -298,3 +298,20 @@ test('review 3, privacy 12: every other host redirects to the canonical site; th
     assert.equal((await get('/', 'rebeluniversity.org')).status, 200);
   } finally { await t.close(); }
 });
+
+test('review 3, privacy 8: new rows are checkpointed out of the write-ahead log right away', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ru-walins-'));
+  const store = new Store(path.join(dir, 'x.db'));
+  const w = store.findOrCreateWork({ kind: 'book', olKey: 'OL3W', title: 'T', creator: 'C', normKey: 'ol:OL3W' });
+  store.createRequest({ tokenHash: 'h1', workId: w.id, placeId: null, onlineOnly: true, format: 'video', status: 'open' });
+  store.createMeeting({ id: 'walMeeting01', workId: w.id, placeId: null, format: 'video', startsUtc: Date.now() + 86400000, tz: 'UTC', venue: '', videoUrl: 'https://v.example/x', note: '', organizerTokenHash: 'o', organizerName: 'Org Name' });
+  store.addAttendee('walMeeting01', 'a', 'Attendee Name');
+  store.addReport('walMeeting01', 'other', 'report text');
+  const wal = path.join(dir, 'x.db-wal');
+  assert.ok(!fs.existsSync(wal) || fs.statSync(wal).size === 0, 'write-ahead log empty after inserts');
+  store.close();
+  fs.rmSync(dir, { recursive: true });
+});

@@ -87,4 +87,4 @@ Nothing needs weekly upkeep. Expired data is deleted hourly and a database backu
 
 - Logs: `fly logs`
 - Update: `git pull && fly deploy --ha=false`
-- Restore a backup: `fly ssh console`, then `cp /data/backups/rebel-YYYY-MM-DD.db /data/restore.db && mv /data/restore.db /data/rebel.db && rm -f /data/rebel.db-wal /data/rebel.db-shm`, exit, and run `fly machine restart` right away.
+- Restore a backup: `fly ssh console`, then `cp /data/backups/rebel-YYYY-MM-DD.db /data/restore.db && mv /data/restore.db /data/rebel.db && rm -f /data/rebel.db-wal /data/rebel.db-shm`, exit, and run `fly machine restart` right away. Note that a restore brings back anything people deleted since that backup (closed requests, removed emails, people who left meetings). Use it only to recover from failure, and tell yourself which day you restored.
