@@ -207,22 +207,14 @@ ${trash.map((t) => html`<tr><td>${hourLabel(t.removed_hour)}</td><td>${t.kind}: 
 
   // ---- Read-only digest for an outside reader. Its token can read this and nothing else.
   router.get('/admin/digest.json', (ctx) => {
-    const fail = (status) => {
-      ctx.res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      ctx.res.end(JSON.stringify({ error: status === 429 ? 'rate limited' : 'not found' }));
-    };
-    if (!config.digestToken) return fail(404);
-    // Only failures count toward lockout, so others on a shared address can't
-    // lock the reader out; successes have their own generous limit.
-    const HOUR = 60 * 60 * 1000;
-    if (app.limiter.count('digest-fail', ctx.ipKey) >= 10 || app.limiter.count('digest-fail', `48|${ctx.ipKey48}`) >= 50) return fail(429);
+    // Without a valid token this looks exactly like any unknown page (the site's
+    // HTML 404), whether or not a token is configured, so it reveals nothing.
+    // There is no failure lockout: a valid token always gets through, and
+    // guessing a 32+ character token is hopeless (third review).
     const m = /^Bearer ([^\s]{1,200})$/.exec(String(ctx.req.headers.authorization || ''));
-    if (!m || !safeEqual(m[1], config.digestToken)) {
-      app.limiter.hit('digest-fail', ctx.ipKey, Infinity, HOUR);
-      app.limiter.hit('digest-fail', `48|${ctx.ipKey48}`, Infinity, HOUR);
-      return fail(404);
-    }
-    if (!app.limiter.hit('digest-ok', ctx.ipKey, 60, HOUR)) return fail(429);
+    const valid = !!config.digestToken && !!m && safeEqual(m[1], config.digestToken);
+    if (!valid) throw new HttpError(404);
+    if (!app.limiter.hit('digest-ok', ctx.ipKey, 60, 60 * 60 * 1000)) throw new HttpError(429);
     const [r] = store.runs(1);
     const run = r ? {
       at: new Date(r.atMs).toISOString(),

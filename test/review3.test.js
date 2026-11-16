@@ -210,3 +210,31 @@ test('review 3, privacy 7: review records are redacted once the item is gone', a
   assert.ok(!JSON.stringify(run.summary).includes('goneMeeting1'));
   store.close();
 });
+
+test('review 3, info: only the exact current asset version is cached as immutable', async () => {
+  const t = await startTestServer();
+  try {
+    const c = new Client(t.base);
+    const page = await c.get('/');
+    const v = /\/static\/style\.css\?v=([0-9a-f]{10})/.exec(page.text)[1];
+    assert.match((await c.get(`/static/style.css?v=${v}`)).headers.get('cache-control'), /immutable/);
+    assert.equal((await c.get('/static/style.css?v=zzz')).headers.get('cache-control'), 'no-cache');
+  } finally { await t.close(); }
+});
+
+test('review 3, privacy 9: backups are pruned by age as well as count', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { runBackup } = await import('../src/jobs.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ru-age-'));
+  const bdir = path.join(dir, 'b');
+  fs.mkdirSync(bdir);
+  for (const d of ['2026-01-01', '2026-01-02']) fs.writeFileSync(path.join(bdir, `rebel-${d}.db`), 'x');
+  const now = Date.UTC(2026, 0, 20);
+  const store = new Store(path.join(dir, 'live.db'), { now: () => now });
+  runBackup({ store, now: () => now, config: { backupDir: bdir, backupKeep: 7 } });
+  assert.deepEqual(fs.readdirSync(bdir).sort(), ['rebel-2026-01-20.db'], 'old files gone even though fewer than 7');
+  store.close();
+  fs.rmSync(dir, { recursive: true });
+});

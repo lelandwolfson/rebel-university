@@ -14,31 +14,34 @@ export default function register(app) {
   // per boardMinMs (an hour by default). That bounds the CPU spent on it, and it
   // matches the hour-rounded timestamps: watching the board can't time a post
   // more precisely than the database could (second review, findings 3 and 4).
-  let cache = { version: -1, at: -Infinity, lonely: [] };
+  // The finished, sorted entries are cached too, so a page view costs almost
+  // nothing however many requests are open (third review).
+  let cache = { version: -1, at: -Infinity, entries: [] };
   const locate = (id) => places.get(id);
-  function lonelyRequests() {
+  function boardEntries(t) {
     const stale = cache.version !== store.version;
     if (stale && app.now() - cache.at >= (app.config.boardMinMs ?? 3600_000)) {
-      cache = { version: store.version, at: app.now(), lonely: boardUnmatched(store.openRequests(), app.distanceKm, locate) };
+      const lonely = boardUnmatched(store.openRequests(), app.distanceKm, locate);
+      const byWork = new Map();
+      for (const r of lonely) {
+        if (!byWork.has(r.workId)) byWork.set(r.workId, { areas: new Set() });
+        const g = byWork.get(r.workId);
+        g.areas.add(r.onlineOnly ? t('place.online') : places.regionLabel(r.placeId) || t('place.online'));
+        if (r.format !== 'in_person') g.areas.add(t('place.online'));
+      }
+      const entries = [...byWork.entries()]
+        .map(([id, g]) => ({ work: store.getWork(id), areas: [...g.areas].sort() }))
+        .filter((e) => e.work && !e.work.held)
+        .sort((x, y) => x.work.title.localeCompare(y.work.title)); // alphabetical: no ranking
+      cache = { version: store.version, at: app.now(), entries };
     }
-    return cache.lonely;
+    return cache.entries;
   }
 
   // Illich's bulletin board: works with no match yet, rough area, no names.
   router.get('/board', (ctx) => {
     const { t } = ctx;
-    const lonely = lonelyRequests();
-    const byWork = new Map();
-    for (const r of lonely) {
-      if (!byWork.has(r.workId)) byWork.set(r.workId, { areas: new Set(), formats: new Set() });
-      const g = byWork.get(r.workId);
-      g.areas.add(r.onlineOnly ? t('place.online') : places.regionLabel(r.placeId) || t('place.online'));
-      if (r.format !== 'in_person') g.areas.add(t('place.online'));
-    }
-    const entries = [...byWork.entries()]
-      .map(([id, g]) => ({ work: store.getWork(id), areas: [...g.areas].sort() }))
-      .filter((e) => e.work && !e.work.held)
-      .sort((a, b) => a.work.title.localeCompare(b.work.title)); // alphabetical: no ranking
+    const entries = boardEntries(t);
     const p = Math.max(0, Number.parseInt(ctx.query.get('page') || '0', 10) || 0);
     const shown = entries.slice(p * PAGE, (p + 1) * PAGE);
 

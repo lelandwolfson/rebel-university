@@ -387,17 +387,26 @@ test('digest endpoint: bearer token only, read-only, public titles only, nothing
   } finally { await t.close(); }
 });
 
-test('review finding 10: guessing locks out only its source; the real reader is unaffected', async () => {
+test('review finding 10 (revised in pass 3): guessing never locks out the real reader, and failures look like any unknown page', async () => {
   const t = await startTestServer({ overrides: { digestToken: DIGEST, trustProxy: true } });
   try {
     const c = new Client(t.base);
-    const get = (ip, tok) => c.request('GET', '/admin/digest.json', null, { Authorization: `Bearer ${tok}`, 'Fly-Client-IP': ip });
-    for (let i = 0; i < 12; i++) await get('6.6.6.6', 'wrong-guess');
-    assert.equal((await get('6.6.6.6', DIGEST)).status, 429, 'guessing source locked out');
-    assert.equal((await get('8.8.4.4', DIGEST)).status, 200, 'real reader unaffected');
-    for (let i = 0; i < 40; i++) await get('8.8.4.4', DIGEST);
-    assert.equal((await get('8.8.4.4', DIGEST)).status, 200, 'successes do not count as failures');
+    const get = (ip, tok, path = '/admin/digest.json') => c.request('GET', path, null, { Authorization: `Bearer ${tok}`, 'Fly-Client-IP': ip });
+    for (let i = 0; i < 30; i++) await get('6.6.6.6', 'wrong-guess');
+    assert.equal((await get('6.6.6.6', DIGEST)).status, 200, 'a valid token always gets through');
+    const bad = await get('6.6.6.6', 'wrong-guess');
+    const unknown = await get('6.6.6.6', 'wrong-guess', '/admin/no-such-page.json');
+    assert.equal(bad.status, 404);
+    assert.equal(bad.headers.get('content-type'), unknown.headers.get('content-type'));
+    assert.equal(bad.text, unknown.text, 'indistinguishable from an unknown page');
   } finally { await t.close(); }
+  const off = await startTestServer();
+  try {
+    const c = new Client(off.base);
+    const a = await c.request('GET', '/admin/digest.json');
+    const b = await c.request('GET', '/admin/no-such-page.json');
+    assert.equal(a.text, b.text, 'no token configured looks the same too');
+  } finally { await off.close(); }
 });
 
 test('digest endpoint is off without a configured token', async () => {

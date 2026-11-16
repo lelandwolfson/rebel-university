@@ -5,3 +5,8 @@ var
 test
 *.md
 .env
+.env.*
+*.db
+*.db-*
+*.sqlite*
+backups

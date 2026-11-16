@@ -30,7 +30,9 @@ export default function register(app) {
   router.get('/static/:name', (ctx) => {
     const f = statics.get(ctx.params.name);
     if (!f) throw new HttpError(404);
-    ctx.res.writeHead(200, { 'Content-Type': f.type, 'Content-Length': f.body.length, 'Cache-Control': ctx.query.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache' });
+    // Immutable only for the exact current version; anything else revalidates.
+    const current = ctx.query.get('v') === app.asset(ctx.params.name).split('?v=')[1];
+    ctx.res.writeHead(200, { 'Content-Type': f.type, 'Content-Length': f.body.length, 'Cache-Control': current ? 'public, max-age=31536000, immutable' : 'no-cache' });
     ctx.res.end(ctx.req.method === 'HEAD' ? undefined : f.body);
   });
 

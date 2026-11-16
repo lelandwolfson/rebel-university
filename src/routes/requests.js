@@ -145,7 +145,9 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
       emailEnc = encrypt(config.keys.email, email);
     }
 
-    if (app.limiter.seen('dup', app.limiter.scoped(ctx.ipKey, `dup:${work.id}|${placeId ?? 'online'}`), 60 * 60 * 1000)) return fail(t('err.duplicate'), 429);
+    // Same address, same work, same place within an hour. (Keyed on the place too, so two people
+    // on one network in different cities aren't blocked; see SECURITY-REVIEW.md, accepted risks.)
+    if (app.limiter.seen('dup', app.limiter.scoped(ctx.ipKey, `dup:${work.id}|${placeId ?? 'online'}`), 60 * 60 * 1000, ctx.owner)) return fail(t('err.duplicate'), 429);
     // Posting the same work from many cities would let someone triangulate where a reader is.
     if (!allowScoped(ctx, 'work-per-ip', `work:${work.id}`, 3, 24 * 3600 * 1000)) return fail(t('err.rate'), 429);
     // Bounds the work any one title can cause (second review, finding 3). Far above real use.

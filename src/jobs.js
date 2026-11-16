@@ -33,8 +33,12 @@ export function runBackup(app) {
   if (fs.existsSync(file)) return null;
   app.store.backup(file);
   fs.chmodSync(file, 0o600);
-  const old = fs.readdirSync(backupDir).filter((f) => /^rebel-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().reverse().slice(backupKeep);
-  for (const f of old) fs.unlinkSync(path.join(backupDir, f));
+  // Keep the newest N, and nothing older than N days, even after downtime (third review).
+  const files = fs.readdirSync(backupDir).filter((f) => /^rebel-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().reverse();
+  const cutoff = new Date(app.now() - backupKeep * 86400000).toISOString().slice(0, 10);
+  for (const [i, f] of files.entries()) {
+    if (i >= backupKeep || f.slice(6, 16) < cutoff) fs.unlinkSync(path.join(backupDir, f));
+  }
   return file;
 }
 
