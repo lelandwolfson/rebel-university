@@ -1,6 +1,18 @@
+# Dependencies
 node_modules/
+
+# Local data: the database, its WAL/SHM/journal files, and backups
 var/
+backups/
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.bak
+
+# Secrets: any env file except the documented example
 .env
+.env.*
+!.env.example
