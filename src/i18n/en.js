@@ -4,7 +4,6 @@
 export default {
   'site.name': 'Rebel University',
   'site.tagline': 'Find people who want to talk about the same book, article, film, or recording.',
-  'site.adults': 'For adults (18+). Every meeting is voluntary.',
 
   'nav.find': 'Find a reader',
   'nav.board': 'Open board',
@@ -77,7 +76,6 @@ export default {
   'request.manual.creator': 'Author or creator',
   'request.manual.link': 'Link to the work (optional)',
   'request.manual.linkHint': 'Shown only to people who join a meeting about it. Works with a link are checked by the site admin before they appear.',
-  'request.adults': 'By posting you confirm you are 18 or older. Meeting anyone is always your choice.',
 
   'manage.title': 'Your request',
   'manage.saveLink': 'Save this page\'s address. It is the only way back to your request. We cannot recover it.',
@@ -132,14 +130,14 @@ export default {
   'meeting.closeToNew': 'Close to new people',
   'meeting.reopen': 'Open to new people again',
   'meeting.remove': 'Remove',
-  'meeting.toolsHint': 'You are the only moderator of this meeting. You can remove anyone, including anyone you believe is under 18.',
+  'meeting.toolsHint': 'You are the only moderator of this meeting. You can remove anyone.',
 
   'report.title': 'Report a meeting',
   'report.reason': 'Reason',
   'report.reasons': {
     unsafe: 'Unsafe or suspicious meeting',
     spam: 'Spam',
-    minor: 'Someone may be under 18',
+    participant: 'A concern about someone in the meeting',
     other: 'Other',
   },
   'report.text': 'Anything the admin should know (optional)',

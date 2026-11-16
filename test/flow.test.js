@@ -34,7 +34,7 @@ test('security headers on every page', async () => {
   assert.match(r.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   assert.equal(r.headers.get('referrer-policy'), 'same-origin');
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
-  assert.match(r.text, /adults \(18\+\)/i);
+  assert.doesNotMatch(r.text, /18\+|adults|under 18/i, 'age policy lives only in the terms');
   assert.ok(!/<script(?![^>]*src="\/static\/)/.test(r.text), 'no inline scripts');
 });
 
@@ -279,7 +279,7 @@ test('private links: unknown tokens 404, closing deletes the request and its ema
 
 test('report a meeting, admin sees it and can remove the meeting', async () => {
   const c = new Client(s.base);
-  const r = await c.submit(`/m/${state.meetingId}/report`, `/m/${state.meetingId}/report`, { reason: 'minor', text: 'see http://x.example' });
+  const r = await c.submit(`/m/${state.meetingId}/report`, `/m/${state.meetingId}/report`, { reason: 'participant', text: 'see http://x.example' });
   assert.equal(r.status, 200);
   assert.match(r.text, /Thank you/);
 
@@ -289,7 +289,7 @@ test('report a meeting, admin sees it and can remove the meeting', async () => {
   const login = await admin.submit('/admin', '/admin/login', { secret: ADMIN_SECRET });
   assert.equal(login.status, 303);
   const dash = await admin.get('/admin');
-  assert.match(dash.text, /Someone may be under 18|minor/);
+  assert.match(dash.text, /participant/);
   assert.ok(!dash.text.includes('x.example'));
   assert.ok(!dash.text.includes('@example.org'), 'no emails on admin page');
 
@@ -501,4 +501,17 @@ test('static files are versioned by content, so browsers never run a stale scrip
   assert.match(versioned.headers.get('cache-control'), /immutable/);
   const bare = await c.get('/static/pow.js');
   assert.equal(bare.headers.get('cache-control'), 'no-cache');
+});
+
+test('the 18+ policy appears once, as a plain sentence in the terms, and nowhere else', async () => {
+  const c = new Client(s.base);
+  const age = /18\+|18 or older|18 and older|under 18|adults? only|for adults/i;
+  const pages = ['/', '/why', '/how-to-meet', '/privacy', '/request/new', '/request/new/details?manual=1', '/board', '/meetings', `/m/${state.meetingId || 'x'}`];
+  for (const p of pages) assert.doesNotMatch((await c.get(p)).text, age, p);
+  const terms = (await c.get('/terms')).text;
+  assert.equal((terms.match(/18 and older/g) || []).length, 1);
+  assert.doesNotMatch(terms, /under 18|Adults only/);
+  const report = await c.get('/m/x/report');
+  assert.doesNotMatch(report.text, /under 18/);
+  for (const m of s.mailer.sent) assert.doesNotMatch(m.text, age);
 });

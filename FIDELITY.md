@@ -29,7 +29,7 @@ Everything below is a paraphrase. Nothing is quoted from the book.
 | 19 | Peer-matching helps people participate in several peer groups at once and encourages local life in cities. | Ch. 6 | A person can hold any number of requests, each with its own link. In-person matching uses the distance each person will travel (25–200 km, default 50), and both limits must hold. | Requests are not linked to each other, so the system cannot assemble a person's reading list. |
 | 20 | Public matching will be abused, like the phone and the mail. Some protection is needed. Illich suggests allowing only pertinent printed information (the title) plus the means to reach the person, or items from a special catalogue. | Ch. 6 | Public pages show only the work, city or region, date, and format. User links never appear on public pages. Free text is short and stripped of URLs. Books come from a catalogue (Open Library). Proof-of-work, rate limits, a report link, and an admin page handle spam. | Spam tooling is the minimum needed to run a public website. Intended departure. |
 | 21 | Concern about dangers should not hide the larger benefits. | Ch. 6 | The site advocates good practice and does not police behavior. No warnings triggered by people's choices. | None. |
-| 22 | Matching is not limited by age group, class, or sex; meetings should not be conscripted by age. | Ch. 6 | No demographic fields at all. | Adults-only policy is stated without any age gate. Intended departure required by the owner. |
+| 22 | Matching is not limited by age group, class, or sex; meetings should not be conscripted by age. | Ch. 6 | No demographic fields at all. | The terms say, in one plain sentence, that the site is for people 18 and older. Nothing else on the site mentions age, and there is no age gate. Intended departure required by the owner (DECISIONS.md D-38). |
 | 23 | The ideal is an institution that increases the chance that people who share a specific interest at a given moment can meet, "no matter what else they had in common". | Ch. 6 | Matching ignores everything except the work, a place, and a format. | None. |
 | 24 | Illich mentions some groups might want to match only people who have already read the work. He doubts it is needed. | Ch. 1, second objection | Not built. | None. Prompt confirms. |
 
@@ -64,7 +64,7 @@ Checked on 2026-11-16 against the running app (browser walk-through on localhost
 | 19 | Matches | Separate links per request. Travel distance chosen per request, both limits apply (Portland–Salem match only at 100 km on both sides; edges of every distance tested). Re-checked 2026-11-16 after the distance change. |
 | 20 | Matches | Hand-entered links shown only on attendee pages (tested: not on board). URLs stripped from notes (tested). PoW, honeypot, rate limits, report link, admin page all exercised in tests. |
 | 21 | Matches | No behavior-triggered warnings anywhere. |
-| 22 | Matches | No demographic fields. Adults-only stated on home, forms, footer, and terms; no age gate. |
+| 22 | Matches | No demographic fields. The age policy is one sentence in the terms and appears nowhere else (tested); no age gate. Re-checked 2026-11-16. |
 | 23 | Matches | Matching ignores everything but work, place, and format. |
 | 24 | Matches | No "has read it" option. |
 

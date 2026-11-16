@@ -66,7 +66,7 @@ export default function register(app) {
     page(ctx, {
       title: t('request.title'),
       body: html`<h1>${t('request.title')}</h1>
-<p>${t('site.tagline')} ${t('site.adults')}</p>
+<p>${t('site.tagline')}</p>
 <form method="get" action="/request/new" class="search" role="search">
   ${field(t('request.search.label'), html`<input type="search" name="q" value="${q}" maxlength="120" required autofocus>`)}
   <button type="submit">${t('request.search.button')}</button>
@@ -318,7 +318,6 @@ ${ref ? html`<section class="card"><h2>${t('request.work.chosen')}</h2><p class=
   </fieldset>
 
   ${field(t('request.email.label'), html`<input type="email" name="email" value="${v.email || ''}" maxlength="254" autocomplete="email">`, t('request.email.hint'))}
-  <p class="adults">${t('request.adults')}</p>
   ${guard(ctx, { pow: true, powBy: 'radius' })}
   <button type="submit">${t('request.submit')}</button>
   <p class="pow-status" aria-live="polite"></p>

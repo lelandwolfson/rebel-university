@@ -6,7 +6,7 @@ Find people who want to talk about the same book, article, film, or recording, a
 
 This is a small, working version of the peer-matching network Ivan Illich describes in *Deschooling Society* (1971), chapter 1 and the "Peer-Matching" section of chapter 6. You name a work. When someone else names the same work nearby, or is happy to meet on video, either of you can call a meeting. You recognize each other by the book on the table. The meeting commits nobody to more than a cup of coffee.
 
-The work is the only thing that matches people. No topics, levels, courses, profiles, ratings, or feeds. No accounts: you get a private link instead. Adults only, as a stated policy.
+The work is the only thing that matches people. No topics, levels, courses, profiles, ratings, or feeds. No accounts: you get a private link instead. The terms state that the site is for people 18 and older.
 
 - [FIDELITY.md](FIDELITY.md): every element of Illich's design and how the app implements it
 - [DECISIONS.md](DECISIONS.md): choices made while building, and why

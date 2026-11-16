@@ -9,7 +9,7 @@ export function home(ctx, tipsBlock) {
 <h1>Find someone to talk with about the thing you're reading.</h1>
 <p class="lede">Name a book, article, film, or recording. When someone else names the same one, you can meet over coffee or on a video call and talk about it.</p>
 <p><a class="button" href="/request/new">Name a work</a> <a class="button secondary" href="/meetings">See upcoming meetings</a></p>
-<p class="adults"><strong>For adults (18+).</strong> Every meeting is voluntary, and it commits nobody to more than a cup of coffee.</p>
+<p>A first meeting commits nobody to more than a cup of coffee.</p>
 </section>
 
 <section>
@@ -52,7 +52,6 @@ export function why() {
 <ul>
   <li><strong>Anonymous by default.</strong> Illich's version used names and addresses. Here you get a private link instead, and you pick a name for each meeting.</li>
   <li><strong>Video as well as in person</strong>, so people far apart can still meet.</li>
-  <li><strong>Adults only</strong>, as a stated policy.</li>
   <li><strong>We keep as little as possible.</strong> Illich noted that such a system would create a record of who read what and met whom, and treated that lightly. We don't. See the <a href="/privacy">privacy page</a>.</li>
 </ul>
 
@@ -92,11 +91,10 @@ export function howToMeet() {
 </ul>
 
 <h2>Organizers</h2>
-<p>If you start a meeting, you're its only moderator. You can edit it, close it to new people, remove anyone (including anyone you believe is under 18), or cancel it. Pick a place you'd be happy to meet a stranger in yourself.</p>
+<p>If you start a meeting, you're its only moderator. You can edit it, close it to new people, remove anyone, or cancel it. Pick a place you'd be happy to meet a stranger in yourself.</p>
 
 <h2>Who can join</h2>
-<p>Anyone who names the same work, or finds the meeting on the listings, can join. That openness is the point, so choose places and share details with that in mind.</p>
-<p>This site is for adults (18+). Every meeting is voluntary.</p>`;
+<p>Anyone who names the same work, or finds the meeting on the listings, can join. That openness is the point, so choose places and share details with that in mind.</p>`;
 }
 
 export function privacy(ctx) {
@@ -158,11 +156,10 @@ export function terms() {
   return html`<h1>Terms</h1>
 <p>Plain-language terms. By using the site you agree to them.</p>
 
-<h2>Adults only</h2>
-<p>Rebel University is for people 18 and older. We do not ask for ages and cannot verify them. Anyone found to be under 18 will be removed. Organizers and the site admin can remove anyone they believe is under 18, and every meeting has a report link for this.</p>
+<p>Rebel University is for people 18 and older.</p>
 
 <h2>Everything is voluntary</h2>
-<p>The site helps adults find each other to talk about a work. Every request, meeting, and conversation is your own choice. Nobody is obliged to meet, to stay, or to meet again.</p>
+<p>The site helps people find each other to talk about a work. Every request, meeting, and conversation is your own choice. Nobody is obliged to meet, to stay, or to meet again.</p>
 
 <h2>What the site does and does not do</h2>
 <ul>

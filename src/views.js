@@ -33,7 +33,6 @@ ${noindex ? raw('<meta name="robots" content="noindex, nofollow">') : ''}
 ${body}
 </main>
 <footer class="site">
-  <p>${t('site.adults')}</p>
   <p><a href="/why">${t('footer.why')}</a> · <a href="/privacy">${t('footer.privacy')}</a> · <a href="/terms">${t('footer.terms')}</a> · <a href="${ctx.app.config.sourceUrl}">${t('footer.source')}</a></p>
 </footer>
 </body>

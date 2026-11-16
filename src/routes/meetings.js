@@ -9,7 +9,7 @@ import { loadRequest } from './requests.js';
 import { notifyNewMeeting, background } from '../notify.js';
 
 export const MAX_ATTENDEES = 100;
-const REASONS = ['unsafe', 'spam', 'minor', 'other'];
+const REASONS = ['unsafe', 'spam', 'participant', 'other'];
 
 // Block keys for "this address in this meeting", in both tiers. A removal
 // blocks the /64 and its /48 (usually one household on IPv6).
@@ -115,7 +115,6 @@ ${errorBox(error)}
 <div class="split">
 <form method="post" action="/r/${ctx.params.token}/meet" data-pow>
   ${meetingFields(ctx, v, { placeId, defaultTz, needName: true })}
-  <p class="adults">${t('request.adults')}</p>
   ${guard(ctx, { pow: true })}
   <button type="submit">${t('meeting.create')}</button>
   <p class="pow-status" aria-live="polite"></p>
@@ -180,7 +179,6 @@ ${state ? html`<p class="notice">${state}</p>` : html`
   ${errorBox(error)}
   <p>${t('meetings.intro')}</p>
   ${field(t('meeting.name'), html`<input name="name" value="${name}" maxlength="40" required autocomplete="off">`, t('meeting.name.hint'))}
-  <p class="adults">${t('request.adults')}</p>
   ${guard(ctx, { pow: true })}
   <button type="submit">${t('meeting.join.button')}</button>
   <p class="pow-status" aria-live="polite"></p>

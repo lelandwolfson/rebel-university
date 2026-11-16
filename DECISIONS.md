@@ -53,7 +53,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 
 **D-24. Request expiry is a delete, not a status.** Nothing is kept once a request is closed or expired.
 
-**D-25. Report reasons.** "Unsafe or suspicious meeting", "Spam", "Someone may be under 18", "Other".
+**D-25. Report reasons.** "Unsafe or suspicious meeting", "Spam", "A concern about someone in the meeting", "Other". *(Revised: the third reason used to name age; it now reads neutrally. See D-38.)*
 
 **D-26. Proof-of-work key is random per process.** A restart (each deploy) invalidates open forms' challenges; the form simply asks again. In exchange, no solution can be replayed after a restart.
 
@@ -78,3 +78,5 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-36. Volume snapshots kept 5 days, not 7.** Fly created the volume with 5-day retention by default. Shorter retention is better for privacy, so the config and privacy page were changed to match: deleted data is gone from backups within 12 days.
 
 **D-37. flyctl installed from its official GitHub release, checksum-verified, into ~/.fly/bin.** The Arch package manager route needed sudo. Release v0.5.8 was used rather than the same-day latest.
+
+**D-38. The 18+ policy is one plain sentence in the terms, and appears nowhere else.** *(Owner's decision, replacing the original instruction to state it on the home page, forms, and footer.)* Repeating it on every page made the site read as a warning rather than what it is, an open invitation to meet and talk about a work. It is not replaced by other warnings. The organizer can still remove anyone, and the report reasons are unchanged except that the age-specific one now reads neutrally ("A concern about someone in the meeting"). A test checks that no other page, form, or email mentions age.

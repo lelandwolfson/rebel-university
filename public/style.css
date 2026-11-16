@@ -56,7 +56,6 @@ h3 { font-size: 1.05rem; margin: 1.25rem 0 0.5rem; }
 cite { font-style: italic; }
 .by, .kind, .year, .hint { color: var(--muted); }
 .hint { font-size: 0.92rem; margin: 0.25rem 0 0; }
-.adults { font-size: 0.95rem; }
 .quiet { margin-top: 2rem; font-size: 0.95rem; }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem 1rem; margin: 1rem 0; }
