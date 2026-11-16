@@ -1,6 +1,6 @@
 # Deploy to Fly.io
 
-About 30 minutes. Expected cost: about $2–3 a month (one shared-cpu-1x machine with 256 MB, a 1 GB volume, volume snapshots). Fly requires a payment card on the account.
+About 30 minutes. Expected cost: about $3–4 a month (one shared-cpu-1x machine with 512 MB, a 1 GB volume, volume snapshots). Fly requires a payment card on the account.
 
 You need a terminal with this repo checked out.
 
@@ -40,8 +40,12 @@ You need a terminal with this repo checked out.
 
 6. **Deploy.**
    ```sh
-   fly deploy
+   fly deploy --ha=false
    ```
+   Always use `--ha=false`. Without it, Fly creates a second machine with its own separate database. Run `fly status` and confirm there is exactly one machine. If there are two, run `fly scale count 1`.
+
+   This first deploy is also the first real build of the Docker image (see OWNER-TODO.md). If it fails, `fly logs` shows why.
+
    Check it: `curl https://rebel-university.fly.dev/healthz` should print `ok`. (Use your app name if you changed it.)
 
 7. **Add the domain to Fly.**
@@ -75,5 +79,5 @@ You need a terminal with this repo checked out.
 Nothing needs weekly upkeep. Expired data is deleted hourly and a database backup is written daily to `/data/backups` (7 kept), on top of Fly's daily volume snapshots (7 kept).
 
 - Logs: `fly logs`
-- Update: `git pull && fly deploy`
+- Update: `git pull && fly deploy --ha=false`
 - Restore a backup: `fly ssh console`, then `cp /data/backups/rebel-YYYY-MM-DD.db /data/restore.db && mv /data/restore.db /data/rebel.db && rm -f /data/rebel.db-wal /data/rebel.db-shm`, exit, and run `fly machine restart` right away.

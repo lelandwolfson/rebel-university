@@ -42,7 +42,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 
 **D-20. Reports carry no reporter identity.** A report holds a reason and up to 500 characters of text, with URLs stripped.
 
-**D-21. Hosting: Fly.io.** One small machine and a 1 GB volume is around $2–3/month, with daily volume snapshots on top of our own backups, managed TLS, and no server to patch.
+**D-21. Hosting: Fly.io.** One small machine (512 MB; the app idles near 140 MB) and a 1 GB volume is around $3–4/month, with daily volume snapshots on top of our own backups, managed TLS, and no server to patch.
 
 **D-22. Video: organizer pastes a link (no automatic rooms).** As decided by the owner. Note on no-account options for the future:
 - The public meet.jit.si service has required moderators to sign in (Google, GitHub, or Facebook) since 2023, so it is not "no account" for the organizer. Guests can still join without an account once a moderator is in.

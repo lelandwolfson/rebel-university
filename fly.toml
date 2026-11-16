@@ -1,4 +1,6 @@
 # Fly.io config. See DEPLOY.md.
+# Exactly ONE machine: SQLite lives on its volume, and rate limits/sessions are in memory.
+# Always deploy with --ha=false so Fly does not create a second machine with its own database.
 app = "rebel-university"
 primary_region = "iad"
 
@@ -37,4 +39,4 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb" # the app idles around 140 MB; 256 MB left too little headroom
