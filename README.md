@@ -2,7 +2,7 @@
 
 Find people who want to talk about the same book, article, film, or recording, and meet them over coffee or on video.
 
-**Live at:** <https://rebeluniversity.org> (once deployed; see [DEPLOY.md](DEPLOY.md))
+**Live at:** <https://rebeluniversity.org> (hosted on Fly.io; see [DEPLOY.md](DEPLOY.md))
 
 This is a small, working version of the peer-matching network Ivan Illich describes in *Deschooling Society* (1971), chapter 1 and the "Peer-Matching" section of chapter 6. You name a work. When someone else names the same work nearby, or is happy to meet on video, either of you can call a meeting. You recognize each other by the book on the table. The meeting commits nobody to more than a cup of coffee.
 
