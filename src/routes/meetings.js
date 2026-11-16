@@ -262,7 +262,12 @@ ${powScript(ctx)}`,
     if (err) return reportPage(ctx, m, { error: err, status: 400 });
     if (!allowWrite(ctx, 'report', 10)) return reportPage(ctx, m, { error: ctx.t('err.rate'), status: 429 });
     const reason = REASONS.includes(ctx.body.reason) ? ctx.body.reason : 'other';
-    if (store.reportCountForMeeting(m.id) < 50) store.addReport(m.id, reason, clean(ctx.body.text, 500));
+    // At most 3 reports per address per meeting per day, so junk reports from one
+    // source can't crowd out real ones. Past 500 reports on one meeting, only
+    // safety reports are still stored.
+    const fresh = allowScoped(ctx, 'report-meeting', `report:${m.id}`, 3, 24 * 3600 * 1000);
+    const count = store.reportCountForMeeting(m.id);
+    if (fresh && (count < 500 || reason === 'unsafe' || reason === 'participant')) store.addReport(m.id, reason, clean(ctx.body.text, 500));
     app.recordWrite(ctx.ipKey, ctx.ipKey48);
     reportPage(ctx, m, { done: true });
   });

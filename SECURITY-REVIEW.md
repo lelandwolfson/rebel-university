@@ -111,3 +111,39 @@ Added to the earlier list:
 - **Proof-of-work is a speed bump.** An attacker with native code and many /48s or IPv4 addresses can still probe. Each probe needs a request, and in-person matching already reveals roughly where someone is within the distance they chose.
 - **Board accuracy.** The fixed 50 km rule can list a reader who already has a wider-distance match. The board still truthfully says nobody is nearby, and it lags by up to an hour.
 - **A seized running server.** Its memory holds the daily address-scrambling key, so recent addresses could be recovered by brute force. This is stated on the privacy page.
+
+---
+
+# Third pass: AI-assisted moderation, 2026-11-16
+
+**Method:** a fresh agent got THREAT-MODEL.md and the code for the moderation feature. It was told not to read this file, DECISIONS.md, or git history. Its focus:
+- prompt injection through reports and titles;
+- getting legitimate items removed in bulk;
+- malformed model output;
+- data leaking into the API call;
+- whether the digest token and endpoint can reveal more than intended or change anything.
+
+It used an in-memory store and a mocked model (no real API calls), so the real model's response to injection could not be tested. Every finding was fixed. Tests are in `test/moderation.test.js`; search for "review finding N".
+
+| # | Severity | Finding | Fix | Test |
+|---|---|---|---|---|
+| 1 | High | **One anonymous report could delete a real meeting.** Each report was its own item, any single "remove" won, and the report count it showed the model could be inflated. | Reports are grouped per meeting into one item and are **flag-only**. The AI never removes a meeting. The report count is no longer sent. | `review finding 1` |
+| 2 | High | **Soft delete could become permanent.** Once a meeting or request was removed, cleanup deleted its now-orphaned work, and restore then failed with a foreign-key error. The admin only saw "Restored: 0". | The trash keeps the work row. Restore re-creates the work, or merges into an existing one with the same title. Restore errors are shown. | `review finding 2`, admin test (`err=gone`) |
+| 3 | Medium-high | **The AI could approve a work with a phishing link**, bypassing the human review of links. | Works with links can only be removed or flagged by the AI. Enforced in code, per item. | validation test, `reports on one meeting are one item…` |
+| 4 | Medium | **Starvation and blanket flagging.** Held works filled every slot ahead of reports. Over the cap, every item was marked reviewed with no action. One refused or cut-off batch flagged everything, and `max_tokens` (4,000) was too small with thinking on. | Half of each batch is reserved for reports. Over the cap, items stay queued. Refusals, cutoffs, and invalid replies split the batch and retry (at most 8 calls). `max_tokens` raised to 16,000. | `review finding 4` (three tests) |
+| 5 | Medium | **Junk reports could suppress real ones.** After 50 junk reports on a meeting, real ones were silently dropped. | 3 reports per address (and /48) per meeting per day. Above 500 reports on a meeting, safety reports are still stored. | `review finding 5` |
+| 6 | Medium | **The digest exposed unpublished titles and possible personal data in reasons.** | The digest shows titles only when they're already public. Reasons are scrubbed of phone-like numbers. The prompt forbids personal details. | digest test |
+| 7 | Low-medium | **A restored meeting could be removed again** by reports that missed the batch. | Moot: reports can't remove anything. All reports on a meeting are marked reviewed together. | `review finding 1` |
+| 8 | Low-medium | **Cross-item steering through predictable ids** (`w1`, `r1`). | Random per-run ids. With finding 1 and finding 3 fixed, an injection has no meeting removal or link approval left to aim for. | `only the needed fields…` (id format) |
+| 9 | Low | **The organizer's note and phone numbers were sent to the model.** | The note is no longer sent. Phone-like numbers are scrubbed from report text. | `only the needed fields…` |
+| 10 | Low | **Digest rate limit:** anyone could exhaust a shared per-IP limit, and the failure counter did nothing. | Only failures lock out (per address and /48), and they lock out only their source. Successes have a separate limit. The counters are evictable, so they can't fill the security-counter map. | `review finding 10` |
+| 11 | Low | **Restore was blocked when the title had been re-posted.** | Restore merges into the existing work. | `review finding 11` |
+| 12 | Low | **No lock on runs.** | An in-memory lock; overlapping runs are skipped. | `review finding 12` |
+| 13 | Info | **Viewing the page acknowledged runs; no meeting links; runs kept by count only; a failure delayed the retry by a day.** | A "Mark handled" button. Flagged meetings link to the meeting. Runs are kept at most 60 and at most 60 days. A failed call retries after 6 hours. | admin test, `API errors…` |
+
+**What held up:** model output is always escaped in HTML; `validate()` rejects `__proto__`, unknown ids, extra fields, and duplicates; caps are checked before anything is applied; the data block can't be closed from item text; no tools are passed; the digest token reaches nothing else and changes nothing; admin actions need a session plus CSRF.
+
+**Accepted risks:**
+- A crafted held work can still persuade the model to remove a legitimate held work. The work goes to the trash (restorable for 7 days), the removal is logged, and it's shown to the owner.
+- A model reason could paraphrase report text into the digest.
+- Trashed items keep their data for 7 days past removal, as the privacy page says.

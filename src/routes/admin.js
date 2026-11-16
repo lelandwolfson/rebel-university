@@ -13,7 +13,10 @@ const SESSION_MS = 2 * 3600 * 1000;
 // Only known action names are echoed back, never arbitrary text from the URL.
 const DONE = { hold_on: 'Holding hand-entered works', hold_off: 'Stopped holding', approve_work: 'Approved', remove_work: 'Moved works to the trash',
   remove_request: 'Moved requests to the trash', remove_meeting: 'Moved meetings to the trash', dismiss_report: 'Dismissed reports', bulk_recent: 'Bulk removed',
-  restore: 'Restored', ai_pause: 'Paused AI moderation', ai_resume: 'Resumed AI moderation', ai_run_now: 'Ran AI moderation; items reviewed' };
+  restore: 'Restored', ack_run: 'Marked handled', ai_pause: 'Paused AI moderation', ai_resume: 'Resumed AI moderation', ai_run_now: 'Ran AI moderation; items reviewed' };
+
+// Restore errors from the store, shown by code so no free text travels in the URL.
+const RESTORE_ERRORS = { gone: 'it is no longer in the trash', conflict: 'a conflicting item already exists', failed: 'it could not be restored' };
 
 const hourLabel = (h) => new Date(h * 3600 * 1000).toISOString().slice(0, 13).replace('T', ' ') + 'h';
 
@@ -89,15 +92,20 @@ export default function register(app) {
     const by = { actor: 'admin', reason };
     let n = 0;
     let back = '/admin';
+    let failed = null;
     switch (b.action) {
       case 'restore': {
         back = '/admin/moderation';
         for (const id of ids) {
           const err = store.restoreTrash(Number(id));
-          if (!err) { n++; store.audit('restore', id, by); }
+          if (!err) { n++; store.audit('restore', id, by); } else failed = err;
         }
         break;
       }
+      case 'ack_run':
+        for (const id of ids) { store.ackRun(Number(id)); n++; }
+        back = '/admin/moderation';
+        break;
       case 'ai_pause': store.setSetting('ai_paused', '1'); store.audit('AI moderation paused', '', by); back = '/admin/moderation'; break;
       case 'ai_resume': store.setSetting('ai_paused', '0'); store.audit('AI moderation resumed', '', by); back = '/admin/moderation'; break;
       case 'ai_run_now': {
@@ -135,26 +143,33 @@ export default function register(app) {
       }
       default: throw new HttpError(400);
     }
-    redirect(ctx, `${back}?done=${encodeURIComponent(b.action)}&n=${n}`);
+    const errCode = failed ? Object.keys(RESTORE_ERRORS).find((k) => RESTORE_ERRORS[k] === failed) || 'failed' : '';
+    redirect(ctx, `${back}?done=${encodeURIComponent(b.action)}&n=${n}${errCode ? `&err=${errCode}` : ''}`);
   });
 
   // ---- Moderation page: AI runs, removals with restore buttons, items flagged for the owner.
   router.get('/admin/moderation', (ctx) => {
     enabled();
     if (!session(ctx)) return loginPage(ctx);
-    const runs = store.runs(10);
+    const unacked = store.unackedRuns();
+    const recent = store.runs(10).filter((r) => r.acked);
+    const runs = [...unacked, ...recent];
+    const errKey = ctx.query.get('err');
+    const restoreError = RESTORE_ERRORS[errKey] ? `Could not restore: ${RESTORE_ERRORS[errKey]}.` : null;
     const trash = store.trashList(200);
     const inTrash = new Set(trash.map((t) => t.id));
     const paused = store.getSetting('ai_paused', '0') === '1';
     const done = DONE[ctx.query.get('done')] ? `${DONE[ctx.query.get('done')]}: ${Number.parseInt(ctx.query.get('n') || '0', 10) || 0}` : null;
+    const itemLabel = (x) => (x.type === 'reported_meeting'
+      ? html`reported meeting <a href="/m/${x.meetingId}"><cite>${x.adminTitle || x.title}</cite></a> (${x.reportCount} ${x.reportCount === 1 ? 'report' : 'reports'})`
+      : html`held work <cite>${x.adminTitle || x.title || ''}</cite>`);
     const when = (ms) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
     const restoreBtn = (trashId) => (trashId && inTrash.has(trashId) ? html`<form method="post" action="/admin/action" class="inline">${guard(ctx)}
       <input type="hidden" name="action" value="restore"><input type="hidden" name="id" value="${trashId}"><button type="submit" class="secondary">Restore</button></form>` : html`<span class="hint">(restored or purged)</span>`);
-    store.ackRuns();
     page(ctx, {
       title: 'Moderation', noindex: true,
       body: html`<h1>Moderation</h1>
-${noticeBox(done)}
+${noticeBox(done)}${errorBox(restoreError)}
 <p><a href="/admin">Back to admin</a></p>
 <section class="admin">
 <h2>AI moderation</h2>
@@ -166,12 +181,13 @@ ${config.anthropicApiKey || app.aiClient ? html`<form method="post" action="/adm
   <button type="submit" name="action" value="ai_run_now" class="secondary">Run now</button></form>` : ''}
 </section>
 
-${runs.length ? runs.map((r, i) => html`<section class="admin">
-<h2>${i === 0 ? 'Latest run' : 'Earlier run'}: ${when(r.atMs)}</h2>
+${runs.length ? runs.map((r) => html`<section class="admin">
+<h2>${r.acked ? 'Handled' : 'Waiting for you'}: run of ${when(r.atMs)}</h2>
+${!r.acked ? html`<form method="post" action="/admin/action" class="inline">${guard(ctx)}<input type="hidden" name="action" value="ack_run"><input type="hidden" name="id" value="${r.id}"><button type="submit" class="secondary">Mark handled</button></form>` : ''}
 <p><strong>${r.status}</strong>. Reviewed ${r.summary.counts?.reviewed ?? 0}, approved ${r.summary.counts?.approved ?? 0}, removed ${r.summary.counts?.removed ?? 0}, flagged ${r.summary.counts?.flagged ?? 0}, discarded ${r.summary.counts?.discarded ?? 0}.</p>
 ${r.summary.note ? html`<p class="hint">${r.summary.note}</p>` : ''}
-${(r.summary.flagged || []).length ? html`<h3>Flagged for you</h3><ul>${r.summary.flagged.map((f) => html`<li><em>${f.type}</em>: <cite>${f.title}</cite>. ${f.reason}</li>`)}</ul>` : ''}
-${(r.summary.actions || []).length ? html`<h3>Actions taken</h3><ul>${r.summary.actions.map((a) => html`<li>${a.action} <em>${a.type}</em>: <cite>${a.title}</cite>. ${a.reason} ${a.action === 'remove' ? restoreBtn(a.trashId) : ''}</li>`)}</ul>` : ''}
+${(r.summary.flagged || []).length ? html`<h3>Flagged for you</h3><ul>${r.summary.flagged.map((f) => html`<li>${itemLabel(f)}. ${f.reason}</li>`)}</ul>` : ''}
+${(r.summary.actions || []).length ? html`<h3>Actions taken</h3><ul>${r.summary.actions.map((a) => html`<li>${a.action}: ${itemLabel(a)}. ${a.reason} ${a.action === 'remove' ? restoreBtn(a.trashId) : ''}</li>`)}</ul>` : ''}
 </section>`) : html`<p>No runs yet.</p>`}
 
 <section class="admin">
@@ -190,20 +206,26 @@ ${trash.map((t) => html`<tr><td>${hourLabel(t.removed_hour)}</td><td>${t.kind}: 
       ctx.res.end(JSON.stringify({ error: status === 429 ? 'rate limited' : 'not found' }));
     };
     if (!config.digestToken) return fail(404);
-    if (!app.limiter.hit('digest', ctx.ipKey, 30, 60 * 60 * 1000)) return fail(429);
+    // Only failures count toward lockout, so others on a shared address can't
+    // lock the reader out; successes have their own generous limit.
+    const HOUR = 60 * 60 * 1000;
+    if (app.limiter.count('digest-fail', ctx.ipKey) >= 10 || app.limiter.count('digest-fail', `48|${ctx.ipKey48}`) >= 50) return fail(429);
     const m = /^Bearer ([^\s]{1,200})$/.exec(String(ctx.req.headers.authorization || ''));
     if (!m || !safeEqual(m[1], config.digestToken)) {
-      app.limiter.hit('digest-fail', ctx.ipKey, 1, 60 * 60 * 1000);
+      app.limiter.hit('digest-fail', ctx.ipKey, Infinity, HOUR);
+      app.limiter.hit('digest-fail', `48|${ctx.ipKey48}`, Infinity, HOUR);
       return fail(404);
     }
+    if (!app.limiter.hit('digest-ok', ctx.ipKey, 60, HOUR)) return fail(429);
     const [r] = store.runs(1);
     const run = r ? {
       at: new Date(r.atMs).toISOString(),
       status: r.status,
       note: r.summary.note || null,
       counts: r.summary.counts,
-      actions: (r.summary.actions || []).map((a) => ({ type: a.type, title: a.title, action: a.action, reason: a.reason })),
-      flagged: (r.summary.flagged || []).map((f) => ({ type: f.type, title: f.title, reason: f.reason })),
+      // Public titles only (approved works, meetings); never held-work titles, ids, or report text.
+      actions: (r.summary.actions || []).map((a) => ({ type: a.type, action: a.action, title: a.title || null, reason: a.reason })),
+      flagged: (r.summary.flagged || []).map((f) => ({ type: f.type, title: f.title || null, reason: f.reason })),
     } : null;
     const body = JSON.stringify({
       site: 'ok',

@@ -15,7 +15,8 @@ const TRAFFIC_MAX = 200_000;
 const GUARD_MAX = 300_000;
 export const POW_CAP = 20_000_000;
 
-const TRAFFIC_BUCKETS = new Set(['req', 'token', 'olsearch', 'admin-login']);
+// Created by unauthenticated requests, so they must be evictable (never fill the guard map).
+const TRAFFIC_BUCKETS = new Set(['req', 'token', 'olsearch', 'admin-login', 'digest-fail', 'digest-ok']);
 
 export const isGuardBucket = (bucket) => !TRAFFIC_BUCKETS.has(bucket);
 

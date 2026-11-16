@@ -100,3 +100,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-47. A removed meeting takes its reports and attendees into the trash with it, and restore brings them back.** Bulk "flood" removal by the admin is still a hard delete; it is meant for emergencies.
 
 **D-48. The digest is a read-only JSON endpoint with its own token.** A cloud task can read it without any power to change the site. It holds no personal data beyond titles and the model's short reasons.
+
+**D-49. The AI never removes a meeting; reports are flag-only.** *(After the moderation review.)* Your spec allowed "remove" for spam. But the model's only evidence about a reported meeting is the reporter's own words, so one anonymous report could get a real meeting deleted. Spam meetings now reach the owner as flagged items with a summary; the AI can still remove obvious spam among held works. This narrows the spec on purpose.
+
+**D-50. The AI can't approve a work that has a link.** A work's link is shown to everyone who meets about it, and the model can't check where a link goes. Linked works can only be removed (obvious spam) or flagged; a person approves them. Over the removal cap, the run takes no action and its items stay queued rather than being marked reviewed. A refusal or a cut-off response splits the batch and retries, up to 8 calls a run.

@@ -142,10 +142,10 @@ export function privacy(ctx) {
 <h2>AI-assisted review</h2>
 <p>Once a day, an AI assistant helps the site admin review two queues: reports sent about meetings, and hand-entered works waiting for review. For that purpose only, the text below is sent to Anthropic, the company that makes the assistant:</p>
 <ul>
-  <li>For a report: its reason, its text, and the reported meeting's work (title, author or creator, kind), format (in person or video), and the organizer's short note.</li>
+  <li>For reports about a meeting: each report's reason and text (with phone-like numbers removed), and the meeting's work (title, author or creator, kind) and format (in person or video).</li>
   <li>For a held work: its kind, title, author or creator, and link.</li>
 </ul>
-<p>Never sent: email addresses, private links, IP addresses, display names, venues, video links, or anything else. The assistant can approve a work that is plainly real, or move obvious spam to a trash the admin can restore from for 7 days. Anything about a person's behavior, and anything unclear, goes to the admin to decide. Every action is logged with its reason. The assistant has no other access to the site.</p>
+<p>Never sent: email addresses, private links, IP addresses, display names, venues, video links, organizers' notes, or anything else. The assistant can approve a work that is plainly real (but not one with a link: a person checks links), or move obvious spam works to a trash the admin can restore from for 7 days. It never removes a meeting: every report goes to the admin to decide, with a short summary. Every action is logged with its reason. The assistant has no other access to the site.</p>
 
 <h2>Other services</h2>
 <ul>
