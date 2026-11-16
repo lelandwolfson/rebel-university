@@ -5,7 +5,6 @@ Passages used: chapter 1, "Why We Must Disestablish School" (the New York exampl
 
 Everything below is a paraphrase. Nothing is quoted from the book.
 
-The column "Status" was checked against the running app during the Verify step (see the end of this file).
 
 | # | What Illich describes (paraphrased) | Source | How the app implements it | Difference |
 |---|---|---|---|---|
@@ -40,4 +39,33 @@ Per Illich and the core rules: curriculum, instruction, certification, ranking o
 
 ## Verification
 
-Filled in during build step 6, after walking through the running app. See the end of this file.
+Checked on 2026-11-16 against the running app (browser walk-through on localhost plus the HTTP flow test in `test/flow.test.js`).
+
+| # | Result | How it was checked |
+|---|---|---|
+| 1 | Matches | Searched Open Library for "deschooling society" in the browser, picked the book; entered "The Fire Next Time" by hand as a book. |
+| 2 | Matches | Schema has no topic/tag/category fields (`src/store.js`). Two requests match only when `work_id` is equal (`compatible()` in `src/matching.js`, tested). |
+| 3 | Matches | Request form fields: work, city or online, format, optional email. Nothing else. |
+| 4 | Matches | Board is sorted alphabetically; no featured or ranked lists anywhere. Admin hold applies only to hand-entered works (tested: books keep flowing while hold is on). |
+| 5 | Matches (intended departure) | Posting returns a private link; email optional, encrypted (tested: plaintext not in DB). |
+| 6 | Matches | Request page shows "1 other person wants to discuss this work" after a second compatible request (tested), plus joinable meetings. |
+| 7 | Matches | Requests get `expires_hour` = posted + 90 days; hourly job deletes them (tested). |
+| 8 | Matches | No user list route exists. Public meeting page shows no venue, note, or names (tested). Names visible only on `/a/<token>`. |
+| 9 | Matches | Started a meeting in the browser from the request page; it appeared on the matching request page and `/meetings` (tested). |
+| 10 | Matches | Any open request can start a meeting; attendees have a "Leave this meeting" button (tested). |
+| 11 | Matches | "Bring the work and set it on the table" shown on home, meeting form, public meeting page, attendee page, emails, and .ics. |
+| 12 | Matches | Coffee line on home, How to meet, and every meeting page. No follow-ups exist in code. Meetings deleted 30 days after the date (tested). |
+| 13 | Matches | Venue is a plain text field with guidance beside it; no venue validation or time restrictions beyond "in the future". |
+| 14 | Matches | "How to meet" page and the tips box. |
+| 15 | Matches (deliberate departure) | See the privacy page and THREAT-MODEL.md; IPs never written to disk. |
+| 16 | Matches | No points, credits, payments. |
+| 17 | Matches | Confirmation email carries the private link; match notices at most daily (tested with a memory mailer). |
+| 18 | Matches | `/board` lists unmatched works with region and country only; matched works disappear from it (tested). Each entry links to posting your own request. |
+| 19 | Matches | Separate links per request; 50 km radius (Portland–Beaverton match, Portland OR–Portland ME don't; tested). |
+| 20 | Matches | Hand-entered links shown only on attendee pages (tested: not on board). URLs stripped from notes (tested). PoW, honeypot, rate limits, report link, admin page all exercised in tests. |
+| 21 | Matches | No behavior-triggered warnings anywhere. |
+| 22 | Matches | No demographic fields. Adults-only stated on home, forms, footer, and terms; no age gate. |
+| 23 | Matches | Matching ignores everything but work, place, and format. |
+| 24 | Matches | No "has read it" option. |
+
+Gaps found during the walk-through and fixed: real browsers' form posts were rejected (Origin header), duplicate author names in Open Library results, and an over-long organizer page. See the git log.
