@@ -201,7 +201,7 @@ export class Store {
     });
   }
 
-  deleteWork(id) { this.version++; return this.sql('DELETE FROM works WHERE id = ?').run(id).changes; }
+  deleteWork(id) { this.version++; const n = this.sql('DELETE FROM works WHERE id = ?').run(id).changes; this.scrub(); return n; }
 
   // ---- requests
   createRequest({ tokenHash, workId, placeId, onlineOnly, format, radiusKm = 50, emailEnc, status }) {
@@ -216,6 +216,9 @@ export class Store {
   requestByToken(tokenHash) { return toRequest(this.sql('SELECT * FROM requests WHERE token_hash = ?').get(tokenHash)); }
   openRequestsForWork(workId) {
     return this.sql("SELECT * FROM requests WHERE work_id = ? AND status = 'open'").all(workId).map(toRequest);
+  }
+  requestCountForWork(workId) {
+    return this.sql('SELECT COUNT(*) AS n FROM requests WHERE work_id = ?').get(workId).n;
   }
   openRequestCountForWork(workId) {
     return this.sql("SELECT COUNT(*) AS n FROM requests WHERE work_id = ? AND status IN ('open','held')").get(workId).n;
@@ -251,6 +254,8 @@ export class Store {
   updateMeeting(id, { format, placeId, startsUtc, tz, venue, videoUrl, note }) {
     this.sql(`UPDATE meetings SET format = ?, place_id = ?, starts_utc = ?, tz = ?, venue = ?, video_url = ?, note = ?, delete_after_hour = ?
       WHERE id = ?`).run(format, placeId ?? null, startsUtc, tz, venue, videoUrl, note, toHour(startsUtc) + 30 * 24, id);
+
+    this.scrub(); // the old venue, link, and note leave the write-ahead log too
   }
   setMeetingStatus(id, status) { this.sql('UPDATE meetings SET status = ? WHERE id = ?').run(status, id); }
   deleteMeeting(id) { const n = this.sql('DELETE FROM meetings WHERE id = ?').run(id).changes; this.scrub(); return n; }
@@ -296,7 +301,7 @@ export class Store {
     return this.sql(`SELECT r.*, m.status, w.title FROM reports r JOIN meetings m ON m.id = r.meeting_id JOIN works w ON w.id = m.work_id
       ORDER BY r.created_hour DESC LIMIT 200`).all();
   }
-  deleteReport(id) { this.sql('DELETE FROM reports WHERE id = ?').run(id); }
+  deleteReport(id) { this.sql('DELETE FROM reports WHERE id = ?').run(id); this.scrub(); }
   reportCountForMeeting(meetingId) { return this.sql('SELECT COUNT(*) AS n FROM reports WHERE meeting_id = ?').get(meetingId).n; }
 
   // ---- audit
@@ -384,17 +389,28 @@ export class Store {
   // Returns null on success or a short error message.
   restoreTrash(trashId) {
     const t = this.sql('SELECT * FROM trash WHERE id = ?').get(trashId);
-    if (!t) return 'it is no longer in the trash';
+    if (!t) return 'gone';
+    const h = this.hour();
+    if (t.removed_hour <= h - TRASH_HOURS) return 'expired';
     const p = JSON.parse(t.payload);
+    // Nothing past its own deletion date comes back (third review).
+    if ((p.requests || []).some((r) => r.expires_hour <= h) || (p.meetings || []).some((m) => m.delete_after_hour <= h)) return 'expired';
     try {
-      this.tx(() => {
+      const err = this.tx(() => {
         const workIds = new Map();
         for (const w of p.works || []) {
-          const same = this.sql('SELECT id FROM works WHERE id = ?').get(w.id);
-          const twin = same ? null : this.sql('SELECT id FROM works WHERE norm_key = ?').get(w.norm_key);
-          if (same) workIds.set(w.id, w.id);
-          else if (twin) workIds.set(w.id, twin.id);
-          else { this.insertRow('works', w); workIds.set(w.id, w.id); }
+          if (this.sql('SELECT id FROM works WHERE id = ?').get(w.id)) { workIds.set(w.id, w.id); continue; }
+          // The work itself was removed: restore that first, never re-create it here.
+          if (t.kind !== 'work' && this.sql("SELECT 1 FROM trash WHERE kind = 'work' AND ref = ?").get(String(w.id))) return 'work_removed';
+          const twin = this.sql('SELECT * FROM works WHERE norm_key = ?').get(w.norm_key);
+          if (twin) {
+            // Join an existing work only if it is the same work: same link, same review state.
+            if ((twin.link || null) !== (w.link || null) || twin.held !== w.held) return 'conflict';
+            workIds.set(w.id, twin.id);
+          } else {
+            this.insertRow('works', w);
+            workIds.set(w.id, w.id);
+          }
         }
         const fix = (row) => (workIds.has(row.work_id) ? { ...row, work_id: workIds.get(row.work_id) } : row);
         for (const row of p.requests || []) if (!this.sql('SELECT 1 FROM requests WHERE id = ?').get(row.id)) this.insertRow('requests', fix(row));
@@ -402,12 +418,39 @@ export class Store {
         for (const row of p.attendees || []) if (!this.sql('SELECT 1 FROM attendees WHERE id = ?').get(row.id)) this.insertRow('attendees', row);
         for (const row of p.reports || []) if (!this.sql('SELECT 1 FROM reports WHERE id = ?').get(row.id)) this.insertRow('reports', row);
         this.sql('DELETE FROM trash WHERE id = ?').run(trashId);
+        return null;
       });
+      if (err) return err;
     } catch (e) {
-      return /UNIQUE/.test(e.message) ? 'a conflicting item already exists' : 'it could not be restored';
+      return /UNIQUE/.test(e.message) ? 'conflict' : 'failed';
     }
     this.version++;
+    this.scrub();
     return null;
+  }
+
+  // When the item a review record describes is gone for good (not in the
+  // trash either), clear its title, ids, and reason from the record.
+  redactRuns() {
+    const exists = (table, id) => !!this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id);
+    const inTrash = (kind, id) => !!this.sql('SELECT 1 FROM trash WHERE kind = ? AND ref = ?').get(kind, String(id));
+    const live = (x) => (x.meetingId ? exists('meetings', x.meetingId) || inTrash('meeting', x.meetingId) : true)
+      && (x.workId ? exists('works', x.workId) || inTrash('work', x.workId) : true);
+    let changed = 0;
+    for (const r of this.sql('SELECT id, summary FROM moderation_runs').all()) {
+      const s = JSON.parse(r.summary);
+      let dirty = false;
+      for (const list of [s.actions || [], s.flagged || []]) {
+        for (const x of list) {
+          if ((x.meetingId || x.workId) && !live(x)) {
+            Object.assign(x, { title: null, adminTitle: '(deleted)', meetingId: null, workId: null, reason: '(deleted)' });
+            dirty = true;
+          }
+        }
+      }
+      if (dirty) { this.sql('UPDATE moderation_runs SET summary = ? WHERE id = ?').run(JSON.stringify(s), r.id); changed++; }
+    }
+    return changed;
   }
 
   // ---- AI moderation queue (only the fields the model needs)
@@ -421,7 +464,8 @@ export class Store {
     if (limit <= 0) return [];
     const metas = this.sql(`SELECT r.meeting_id, m.format, w.title, w.creator, w.kind, MIN(r.created_hour) AS first
       FROM reports r JOIN meetings m ON m.id = r.meeting_id JOIN works w ON w.id = m.work_id
-      WHERE r.ai_reviewed_hour IS NULL GROUP BY r.meeting_id ORDER BY first LIMIT ?`).all(limit);
+      WHERE r.ai_reviewed_hour IS NULL GROUP BY r.meeting_id
+      ORDER BY MAX(r.reason IN ('unsafe','participant')) DESC, first LIMIT ?`).all(limit); // safety reports first
     return metas.map((g) => {
       const rows = this.sql('SELECT id, reason, text FROM reports WHERE meeting_id = ? AND ai_reviewed_hour IS NULL ORDER BY created_hour DESC, id').all(g.meeting_id);
       return { meetingId: g.meeting_id, format: g.format, title: g.title, creator: g.creator, kind: g.kind,
@@ -436,7 +480,8 @@ export class Store {
 
   // ---- AI moderation runs
   addRun(status, summary) {
-    const r = this.sql('INSERT INTO moderation_runs (at_ms, status, summary) VALUES (?, ?, ?)').run(this.now(), status, JSON.stringify(summary));
+    // Run times are rounded to the hour, like every other timestamp.
+    const r = this.sql('INSERT INTO moderation_runs (at_ms, status, summary) VALUES (?, ?, ?)').run(this.hour() * HOUR, status, JSON.stringify(summary));
     // Keep at most 60 runs, and none older than 60 days.
     this.sql('DELETE FROM moderation_runs WHERE id NOT IN (SELECT id FROM moderation_runs ORDER BY at_ms DESC LIMIT 60) OR at_ms < ?').run(this.now() - 60 * 86400000);
     return Number(r.lastInsertRowid);
@@ -467,10 +512,14 @@ export class Store {
   // ---- bulk removal (admin)
   deleteRequestsSince(hours) {
     this.version++;
-    return this.sql('DELETE FROM requests WHERE created_hour >= ?').run(this.hour() - hours).changes;
+    const n = this.sql('DELETE FROM requests WHERE created_hour >= ?').run(this.hour() - hours).changes;
+    this.scrub();
+    return n;
   }
   deleteMeetingsSince(hours) {
-    return this.sql('DELETE FROM meetings WHERE created_hour >= ?').run(this.hour() - hours).changes;
+    const n = this.sql('DELETE FROM meetings WHERE created_hour >= ?').run(this.hour() - hours).changes;
+    this.scrub();
+    return n;
   }
 
   // ---- scheduled cleanup
@@ -486,6 +535,7 @@ export class Store {
       trash: this.sql('DELETE FROM trash WHERE removed_hour <= ?').run(h - TRASH_HOURS).changes,
       runs: this.sql('DELETE FROM moderation_runs WHERE at_ms < ?').run(this.now() - 60 * 86400000).changes,
     }));
+    r.redacted = this.redactRuns();
     this.scrub();
     return r;
   }

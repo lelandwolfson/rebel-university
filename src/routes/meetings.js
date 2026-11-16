@@ -297,7 +297,7 @@ ${cancelled ? html`<p class="notice">${t('meeting.cancelled')}</p>` : ''}
   <p>${whereLabel(ctx, m)} · ${formatLabel(ctx, m.format)}${m.status === 'closed' ? html` · <em>${t('meeting.closedToNew')}</em>` : ''}</p>
   ${!cancelled && inPerson ? html`<p><strong>${t('meeting.venue')}:</strong> ${m.venue}</p><p>${t('meet.bring')}</p>` : ''}
   ${!cancelled && video ? html`<p><strong>${t('meeting.video')}:</strong> <a href="${m.videoUrl}" rel="noopener noreferrer nofollow">${m.videoUrl}</a></p><p class="hint">${t('meeting.leavingSite')}</p>` : ''}
-  ${work.link ? html`<p><strong>${t('meeting.workLink')}:</strong> <a href="${work.link}" rel="noopener noreferrer nofollow">${work.link}</a></p><p class="hint">${t('meeting.leavingSite')}</p>` : ''}
+  ${work.link && !work.held ? html`<p><strong>${t('meeting.workLink')}:</strong> <a href="${work.link}" rel="noopener noreferrer nofollow">${work.link}</a></p><p class="hint">${t('meeting.leavingSite')}</p>` : ''}
   ${m.note ? html`<blockquote class="note">${m.note}</blockquote>` : ''}
   ${!cancelled ? html`<p><a href="/a/${token}/ics">${t('meeting.ics')}</a></p>` : ''}
 </section>

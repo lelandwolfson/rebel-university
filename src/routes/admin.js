@@ -16,7 +16,13 @@ const DONE = { hold_on: 'Holding hand-entered works', hold_off: 'Stopped holding
   restore: 'Restored', ack_run: 'Marked handled', ai_pause: 'Paused AI moderation', ai_resume: 'Resumed AI moderation', ai_run_now: 'Ran AI moderation; items reviewed' };
 
 // Restore errors from the store, shown by code so no free text travels in the URL.
-const RESTORE_ERRORS = { gone: 'it is no longer in the trash', conflict: 'a conflicting item already exists', failed: 'it could not be restored' };
+const RESTORE_ERRORS = {
+  gone: 'it is no longer in the trash',
+  expired: 'it has passed its deletion date',
+  work_removed: 'the work it belonged to was removed; restore that work first',
+  conflict: 'a different work with the same title now exists',
+  failed: 'it could not be restored',
+};
 
 const hourLabel = (h) => new Date(h * 3600 * 1000).toISOString().slice(0, 13).replace('T', ' ') + 'h';
 
@@ -143,7 +149,7 @@ export default function register(app) {
       }
       default: throw new HttpError(400);
     }
-    const errCode = failed ? Object.keys(RESTORE_ERRORS).find((k) => RESTORE_ERRORS[k] === failed) || 'failed' : '';
+    const errCode = failed ? (RESTORE_ERRORS[failed] ? failed : 'failed') : '';
     redirect(ctx, `${back}?done=${encodeURIComponent(b.action)}&n=${n}${errCode ? `&err=${errCode}` : ''}`);
   });
 

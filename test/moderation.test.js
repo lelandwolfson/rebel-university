@@ -214,14 +214,15 @@ test('review finding 4: half the batch is reserved for reported meetings', () =>
   store.close();
 });
 
-test('review finding 4: over the removal cap, nothing happens and items stay queued', async () => {
+test('review finding 4 (revised in pass 3): over the removal cap, nothing happens and the owner is told once', async () => {
   const store = new Store(':memory:');
   for (let i = 0; i < MAX_REMOVALS + 5; i++) store.findOrCreateWork({ kind: 'film', title: `Real Film ${i}`, creator: 'Someone', normKey: `film:${i}`, held: true });
   const r = await runModeration(appFor(store, mockModel(allSay('remove', 'Remove everything.'))));
   assert.equal(r.status, 'flagged');
   assert.equal(store.heldWorks().length, MAX_REMOVALS + 5, 'nothing removed');
   assert.equal(store.trashList().length, 0);
-  assert.equal(collect(store).items.length, MAX_REMOVALS + 5, 'still queued for the owner and the next run');
+  assert.equal(r.flagged.length, MAX_REMOVALS + 5, 'all flagged for the owner');
+  assert.equal(collect(store).items.length, 0, 'not re-sent daily (third review: it used to loop)');
   store.close();
 });
 

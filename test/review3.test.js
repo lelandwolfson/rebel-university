@@ -96,3 +96,117 @@ test('review 3, core 3: a removal block holds for days, until after the meeting'
     assert.equal((await troll.submit(`/m/${mid}`, `/m/${mid}/join`, { name: 'T2' })).status, 429);
   } finally { await t.close(); }
 });
+
+// ---- AI moderation and trash (reviewer 1)
+import { Store } from '../src/store.js';
+import { runModeration, collect, scrubNumbers } from '../src/moderation.js';
+
+function mock(fn) {
+  return { messages: { async create(p) {
+    const items = JSON.parse(p.messages[0].content.split('<untrusted_items>\n')[1].split('\n</untrusted_items>')[0]);
+    return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ decisions: items.map(fn) }) }] };
+  } } };
+}
+const appOf = (store, client) => ({ store, config: { anthropicApiKey: 'k' }, aiClient: client, now: () => Date.now() });
+
+test('review 3, mod 1: restore refuses to join a look-alike work with a different link', () => {
+  const store = new Store(':memory:');
+  const w = store.findOrCreateWork({ kind: 'film', title: 'Real Film', creator: 'D', link: null, normKey: 'film:real' });
+  store.createMeeting({ id: 'meetReal0001', workId: w.id, placeId: null, format: 'video', startsUtc: Date.now() + 86400000, tz: 'UTC', venue: '', videoUrl: 'https://v.example/x', note: '', organizerTokenHash: 'o', organizerName: 'O' });
+  const t = store.trashWork(w.id, { actor: 'admin', reason: 'x' });
+  store.findOrCreateWork({ kind: 'film', title: 'Real Film', creator: 'D', link: 'https://phish.example/watch', normKey: 'film:real', held: true });
+  assert.equal(store.restoreTrash(t), 'conflict');
+  assert.ok(!store.getMeeting('meetReal0001'), 'nothing restored onto the look-alike');
+  store.close();
+});
+
+test('review 3, mod 1: attendees never see the link of a work still held for review', async () => {
+  const t = await startTestServer();
+  try {
+    const w = t.store.findOrCreateWork({ kind: 'film', title: 'Held Film', creator: 'D', link: 'https://unreviewed.example/x', normKey: 'film:held', held: true });
+    const { hashToken } = await import('../src/security.js');
+    t.store.createMeeting({ id: 'heldMeeting1', workId: w.id, placeId: null, format: 'video', startsUtc: Date.now() + 86400000, tz: 'UTC', venue: '', videoUrl: 'https://v.example/x', note: '', organizerTokenHash: hashToken('A'.repeat(43)), organizerName: 'O' });
+    const page = await new Client(t.base).get(`/a/${'A'.repeat(43)}`);
+    assert.equal(page.status, 200);
+    assert.ok(!page.text.includes('unreviewed.example'));
+  } finally { await t.close(); }
+});
+
+test('review 3, mod 2: the AI never removes a held work that carries other people\'s requests', async () => {
+  const store = new Store(':memory:');
+  const w = store.findOrCreateWork({ kind: 'film', title: 'Squatted', creator: 'X', link: 'https://casino.example', normKey: 'film:sq', held: true });
+  store.createRequest({ tokenHash: 'a', workId: w.id, placeId: null, onlineOnly: true, format: 'video', status: 'held' });
+  store.createRequest({ tokenHash: 'b', workId: w.id, placeId: null, onlineOnly: true, format: 'video', status: 'held' });
+  const r = await runModeration(appOf(store, mock((i) => ({ item_id: i.item_id, action: 'remove', reason: 'Casino link.' }))));
+  assert.ok(store.getWork(w.id), 'not removed');
+  assert.match(r.flagged[0].reason, /several people/);
+  store.close();
+});
+
+test('review 3, mod 5: safety reports are reviewed before older junk reports', () => {
+  const store = new Store(':memory:');
+  const w = store.findOrCreateWork({ kind: 'book', olKey: 'OL1W', title: 'B', creator: 'C', normKey: 'ol:OL1W' });
+  for (let i = 0; i < 25; i++) {
+    store.createMeeting({ id: `junkMeet${String(i).padStart(4, '0')}`, workId: w.id, placeId: null, format: 'video', startsUtc: Date.now() + 86400000, tz: 'UTC', venue: '', videoUrl: 'https://v.example/x', note: '', organizerTokenHash: `o${i}`, organizerName: 'O' });
+    store.addReport(`junkMeet${String(i).padStart(4, '0')}`, 'spam', 'junk');
+  }
+  store.createMeeting({ id: 'safetyMeet01', workId: w.id, placeId: null, format: 'video', startsUtc: Date.now() + 86400000, tz: 'UTC', venue: '', videoUrl: 'https://v.example/x', note: '', organizerTokenHash: 'os', organizerName: 'O' });
+  store.addReport('safetyMeet01', 'unsafe', 'followed me');
+  const { map } = collect(store, 10);
+  assert.ok([...map.values()].some((v) => v.meetingId === 'safetyMeet01'));
+  store.close();
+});
+
+test('review 3, mod 6: a work the owner approved during the call is not removed', async () => {
+  const store = new Store(':memory:');
+  const w = store.findOrCreateWork({ kind: 'film', title: 'Race', creator: 'X', normKey: 'film:race', held: true });
+  const client = mock((i) => { store.approveWork(w.id); return { item_id: i.item_id, action: 'remove', reason: 'Spam.' }; });
+  await runModeration(appOf(store, client));
+  assert.ok(store.getWork(w.id), 'still there');
+  assert.equal(store.getWork(w.id).held, false);
+  store.close();
+});
+
+test('review 3, mod 7: restore refuses expired data and a removed parent work', () => {
+  let now = Date.UTC(2026, 0, 1);
+  const store = new Store(':memory:', { now: () => now });
+  const w = store.findOrCreateWork({ kind: 'film', title: 'Spam', creator: 'S', normKey: 'film:spam' });
+  store.createRequest({ tokenHash: 'r1', workId: w.id, placeId: null, onlineOnly: true, format: 'video', status: 'open', emailEnc: 'v1.secret' });
+  const reqTrash = store.trashRequest(store.requestByToken('r1').id, { actor: 'admin', reason: 'x' });
+  store.trashWork(w.id, { actor: 'admin', reason: 'spam' });
+  assert.equal(store.restoreTrash(reqTrash), 'work_removed');
+  const w2 = store.findOrCreateWork({ kind: 'film', title: 'Old', creator: 'O', normKey: 'film:old' });
+  store.createRequest({ tokenHash: 'r2', workId: w2.id, placeId: null, onlineOnly: true, format: 'video', status: 'open', emailEnc: 'v1.secret2' });
+  const t2 = store.trashRequest(store.requestByToken('r2').id, { actor: 'admin', reason: 'x' });
+  now += 91 * 86400000;
+  assert.equal(store.restoreTrash(t2), 'expired');
+  store.close();
+});
+
+test('review 3, mod 8/9: approvals are capped per run; phone numbers with any separator are scrubbed', async () => {
+  for (const s of ['555/010/0123', '555_010_0123', '555,010,0123', '555–010–0123', '555 · 010 · 0123', '+1 (555) 010-0123']) {
+    assert.equal(scrubNumbers(`call ${s} now`), 'call [number] now', s);
+  }
+  assert.equal(scrubNumbers('Catch-22, 1984, 2001'), 'Catch-22, 1984, 2001', 'short numbers survive');
+  const store = new Store(':memory:');
+  for (let i = 0; i < 15; i++) store.findOrCreateWork({ kind: 'film', title: `Film ${i}`, creator: 'C', normKey: `film:${i}`, held: true });
+  const r = await runModeration(appOf(store, mock((i) => ({ item_id: i.item_id, action: 'approve', reason: 'Real.' }))));
+  assert.equal(r.counts.approved, 10);
+  assert.equal(r.flagged.filter((f) => /Approval limit/.test(f.reason)).length, 5);
+  store.close();
+});
+
+test('review 3, privacy 7: review records are redacted once the item is gone', async () => {
+  let now = Date.UTC(2026, 0, 1);
+  const store = new Store(':memory:', { now: () => now });
+  const w = store.findOrCreateWork({ kind: 'book', olKey: 'OL2W', title: 'B', creator: 'C', normKey: 'ol:OL2W' });
+  store.createMeeting({ id: 'goneMeeting1', workId: w.id, placeId: null, format: 'video', startsUtc: now + 86400000, tz: 'UTC', venue: '', videoUrl: 'https://v.example/x', note: '', organizerTokenHash: 'o', organizerName: 'O' });
+  store.addReport('goneMeeting1', 'participant', 'Jane Roe was rude.');
+  await runModeration({ store, config: { anthropicApiKey: 'k' }, aiClient: mock((i) => ({ item_id: i.item_id, action: 'flag_for_owner', reason: 'A participant says Jane Roe was rude.' })), now: () => now });
+  now += 32 * 86400000; // meeting deleted 30 days after its date
+  store.cleanup();
+  const [run] = store.runs(1);
+  assert.ok(!JSON.stringify(run.summary).includes('Jane Roe'));
+  assert.ok(!JSON.stringify(run.summary).includes('goneMeeting1'));
+  store.close();
+});

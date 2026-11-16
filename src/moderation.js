@@ -17,6 +17,7 @@ export const AI_MODEL = 'claude-haiku-5-5';
 export const MAX_ITEMS = 40;          // per run; half reserved for reported meetings
 export const MAX_REMOVALS = 20;      // more than this: take no action, flag the run
 export const MAX_CALLS = 8;          // per run, including retries on split batches
+export const MAX_APPROVALS = 10;     // per run; more go to the owner
 export const REPORTS_PER_ITEM = 5;
 export const REASON_MAX = 200;
 export const RUN_EVERY_MS = 23 * 3600 * 1000;
@@ -41,7 +42,15 @@ Return one decision for every item, with a short factual reason under 200 charac
 // Long digit runs (phone numbers, street numbers, account numbers) are not
 // needed to judge anything and are replaced before sending or storing.
 export function scrubNumbers(s) {
-  return String(s || '').replace(/(?:\+?\d[\d\s().-]{5,}\d)/g, '[number]');
+  // Seven or more digits in groups joined by short separators (dots, dashes,
+  // slashes, spaces, underscores, bare commas, middle dots, brackets). A comma
+  // followed by a space reads as a list ("Catch-22, 1984, 2001") and is kept.
+  return String(s || '').replace(/\+?\(?\d+(?:[^\p{L}\d\n]{1,3}\d+)*/gu, (m) => {
+    const digits = (m.match(/\d/g) || []).length;
+    if (digits < 7) return m;
+    if (/,\s/.test(m)) return m.split(/(,\s+)/).map((part) => (/^,\s+$/.test(part) ? part : scrubNumbers(part))).join('');
+    return '[number]';
+  });
 }
 
 // Code-level backstop for approvals: a work whose text reads like instructions
@@ -74,7 +83,7 @@ export function collect(store, limit = MAX_ITEMS) {
   for (const w of works) {
     const id = itemId(used);
     const allowed = w.link ? ['remove', 'flag_for_owner'] : ['approve', 'remove', 'flag_for_owner'];
-    items.push({ item_id: id, type: 'held_work', allowed_actions: allowed, kind: w.kind, title: w.title, creator: w.creator, link: w.link || null });
+    items.push({ item_id: id, type: 'held_work', allowed_actions: allowed, kind: w.kind, title: scrubNumbers(w.title), creator: scrubNumbers(w.creator), link: w.link || null });
     map.set(id, { type: 'held_work', id: w.id, title: w.title, allowed, text: `${w.kind} ${w.title} ${w.creator}` });
   }
   for (const g of groups) {
@@ -162,7 +171,8 @@ export function validate(text, map) {
 
 async function defaultClient(apiKey) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  return new Anthropic({ apiKey, maxRetries: 2, timeout: 120_000 });
+  // Explicit, so environment variables can't redirect the call or log the payload.
+  return new Anthropic({ apiKey, baseURL: 'https://api.anthropic.com', logLevel: 'off', maxRetries: 2, timeout: 120_000 });
 }
 
 function responseText(msg) {
@@ -258,8 +268,13 @@ async function runLocked(app, client) {
 
   const removals = out.decisions.filter((d) => d.action === 'remove');
   if (removals.length > MAX_REMOVALS) {
-    // Take no action at all. Items stay queued (not marked reviewed), and the owner is told.
-    const summary = { ...base, note: `The model asked for ${removals.length} removals, over the limit of ${MAX_REMOVALS}. No action was taken; please review the queue.` };
+    // Take no action at all, and tell the owner once: the items are marked
+    // reviewed so the same batch isn't re-sent every day (third review).
+    for (const item of map.values()) {
+      if (item.type === 'held_work') store.markReviewed('works', [item.id]);
+      else store.markReviewed('reports', item.reportIds);
+    }
+    const summary = { ...base, note: `The model asked for ${removals.length} removals, over the limit of ${MAX_REMOVALS}. No action was taken; please review these in the admin queue.` };
     summary.flagged = [...map.values()].map((item) => ({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: 'Run over the removal limit: no action taken.' }));
     summary.counts.flagged = summary.flagged.length;
     store.addRun('flagged', summary);
@@ -276,15 +291,25 @@ async function runLocked(app, client) {
   }
 
   const decided = new Set();
+  let approvals = 0;
   for (const d of out.decisions) {
     const item = map.get(d.itemId);
     decided.add(d.itemId);
+    // Act only on a work that is still held: the owner may have handled it during the call.
+    const current = item.type === 'held_work' ? store.getWork(item.id) : null;
+    if (item.type === 'held_work' && (!current || !current.held)) continue;
     if (d.action === 'flag_for_owner') {
       base.flagged.push({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: d.reason });
+    } else if (d.action === 'approve' && approvals >= MAX_APPROVALS) {
+      base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: `Approval limit of ${MAX_APPROVALS} per run reached. Please check it.` });
+    } else if (d.action === 'remove' && store.requestCountForWork(item.id) > 1) {
+      // Others may have joined this work by typing the same title: never auto-remove their requests.
+      base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: `Removal held back: several people's requests use this work. ${d.reason}` });
     } else if (d.action === 'approve' && looksLikeInstructions(item.text)) {
       base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: 'Approval blocked: the text reads like instructions to a reviewer. Please check it.' });
     } else if (d.action === 'approve') { // held work without a link (enforced by validate)
       store.approveWork(item.id);
+      approvals++;
       store.audit('approve work', item.id, { actor: 'ai', reason: d.reason });
       base.actions.push({ type: item.type, title: publicTitle(item, true), ...refOf(item), action: 'approve', reason: d.reason });
       base.counts.approved++;
