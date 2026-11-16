@@ -141,6 +141,8 @@ It used an in-memory store and a mocked model (no real API calls), so the real m
 | 12 | Low | **No lock on runs.** | An in-memory lock; overlapping runs are skipped. | `review finding 12` |
 | 13 | Info | **Viewing the page acknowledged runs; no meeting links; runs kept by count only; a failure delayed the retry by a day.** | A "Mark handled" button. Flagged meetings link to the meeting. Runs are kept at most 60 and at most 60 days. A failed call retries after 6 hours. | admin test, `API errors…` |
 
+**Found in the dry run:** a stand-in for a model fully taken over by the injection could approve the injection's own title (a held work with no link). Fixed: approvals of instruction-like text are downgraded to a flag in code. Tests: `dry-run finding…` and `instruction detector…` (including real titles that must pass).
+
 **What held up:** model output is always escaped in HTML; `validate()` rejects `__proto__`, unknown ids, extra fields, and duplicates; caps are checked before anything is applied; the data block can't be closed from item text; no tools are passed; the digest token reaches nothing else and changes nothing; admin actions need a session plus CSRF.
 
 **Accepted risks:**

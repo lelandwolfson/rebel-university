@@ -44,6 +44,14 @@ export function scrubNumbers(s) {
   return String(s || '').replace(/(?:\+?\d[\d\s().-]{5,}\d)/g, '[number]');
 }
 
+// Code-level backstop for approvals: a work whose text reads like instructions
+// to a reviewer or a model is never auto-approved, whatever the model says.
+// (A heuristic: it narrows the injection target, it can't close it.)
+const INSTRUCTION_LIKE = /\b(ignore|disregard|override|bypass|jailbreak)\b|\b(system|assistant|developer)\s*[:>]|\b(your|my|these|those|all|previous|prior|above|earlier)\s+(rules|instructions|prompt)\b|\b(system prompt|reviewer|moderator|the ai|language model|llm|claude|anthropic)\b|\b(approve|remove|delete|flag)\b.{0,40}\b(all|every|everything|items?|meetings?|works?)\b|\b(site owner|administrator|admin)\b/i;
+export function looksLikeInstructions(text) {
+  return INSTRUCTION_LIKE.test(String(text || ''));
+}
+
 function itemId(used) {
   let id;
   do { id = `i${crypto.randomBytes(4).toString('hex')}`; } while (used.has(id));
@@ -67,7 +75,7 @@ export function collect(store, limit = MAX_ITEMS) {
     const id = itemId(used);
     const allowed = w.link ? ['remove', 'flag_for_owner'] : ['approve', 'remove', 'flag_for_owner'];
     items.push({ item_id: id, type: 'held_work', allowed_actions: allowed, kind: w.kind, title: w.title, creator: w.creator, link: w.link || null });
-    map.set(id, { type: 'held_work', id: w.id, title: w.title, allowed });
+    map.set(id, { type: 'held_work', id: w.id, title: w.title, allowed, text: `${w.kind} ${w.title} ${w.creator}` });
   }
   for (const g of groups) {
     const id = itemId(used);
@@ -273,6 +281,8 @@ async function runLocked(app, client) {
     decided.add(d.itemId);
     if (d.action === 'flag_for_owner') {
       base.flagged.push({ type: item.type, title: publicTitle(item, false), ...refOf(item), reason: d.reason });
+    } else if (d.action === 'approve' && looksLikeInstructions(item.text)) {
+      base.flagged.push({ type: item.type, title: null, ...refOf(item), reason: 'Approval blocked: the text reads like instructions to a reviewer. Please check it.' });
     } else if (d.action === 'approve') { // held work without a link (enforced by validate)
       store.approveWork(item.id);
       store.audit('approve work', item.id, { actor: 'ai', reason: d.reason });
