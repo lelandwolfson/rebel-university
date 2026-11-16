@@ -1,0 +1,20 @@
+{
+  "name": "rebel-university",
+  "version": "0.1.0",
+  "description": "Find people who want to discuss the same book, article, film, or recording. After Ivan Illich's peer-matching network.",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-concurrency=1 test/",
+    "audit": "npm audit --omit=dev --audit-level=moderate"
+  },
+  "dependencies": {
+    "nodemailer": "10.2.1"
+  }
+}
