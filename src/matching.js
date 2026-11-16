@@ -67,3 +67,69 @@ export function unmatched(requests, distanceKm) {
   }
   return out;
 }
+
+// ---- The open board
+//
+// Whether a request is on the board must not depend on anyone's chosen travel
+// distance, or watching the board would reveal those distances (second review,
+// finding 4). So the board uses one fixed rule: a request leaves the board once
+// someone else for the same work could meet it on video, or is within
+// BOARD_NEARBY_KM in person. A spatial grid keeps it fast even when one work
+// has thousands of requests (second review, finding 3).
+
+export const BOARD_NEARBY_KM = DEFAULT_RADIUS_KM;
+const CELL_DEG = 0.5;
+
+// locate(placeId) -> { lat, lon } or null
+export function boardUnmatched(requests, distanceKm, locate) {
+  const byWork = new Map();
+  for (const r of requests) {
+    if (!byWork.has(r.workId)) byWork.set(r.workId, []);
+    byWork.get(r.workId).push(r);
+  }
+  const out = [];
+  for (const group of byWork.values()) {
+    const videoMatched = group.filter(acceptsVideo).length >= 2;
+    const grid = new Map();
+    const cellOf = (p) => [Math.floor(p.lat / CELL_DEG), Math.floor(p.lon / CELL_DEG)];
+    for (const r of group) {
+      if (!acceptsInPerson(r)) continue;
+      const p = locate(r.placeId);
+      if (!p) continue;
+      const [i, j] = cellOf(p);
+      const k = `${i},${j}`;
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(r);
+    }
+    for (const r of group) {
+      if (videoMatched && acceptsVideo(r)) continue;
+      if (acceptsInPerson(r) && nearbyInGrid(r, grid, locate, cellOf, distanceKm)) continue;
+      out.push(r);
+    }
+  }
+  return out;
+}
+
+function nearbyInGrid(r, grid, locate, cellOf, distanceKm) {
+  const p = locate(r.placeId);
+  if (!p) return false;
+  const [i, j] = cellOf(p);
+  const latSpan = Math.ceil(BOARD_NEARBY_KM / 111 / CELL_DEG);
+  const cos = Math.max(Math.cos((Math.abs(p.lat) + latSpan * CELL_DEG) * Math.PI / 180), 0.01);
+  const lonSpan = Math.min(Math.ceil(BOARD_NEARBY_KM / (111.32 * cos) / CELL_DEG), 360 / CELL_DEG);
+  for (let di = -latSpan; di <= latSpan; di++) {
+    for (let dj = -lonSpan; dj <= lonSpan; dj++) {
+      const cell = grid.get(`${i + di},${wrapLon(j + dj)}`);
+      if (!cell) continue;
+      for (const o of cell) if (o.id !== r.id && distanceKm(r.placeId, o.placeId) <= BOARD_NEARBY_KM) return true;
+    }
+  }
+  return false;
+}
+
+// Longitude cells run from -360 to 359 (lon -180..180 at 0.5 degrees); wrap around the date line.
+function wrapLon(j) {
+  const n = 360 / CELL_DEG; // 720 cells
+  const lo = -n / 2;
+  return ((j - lo) % n + n) % n + lo;
+}

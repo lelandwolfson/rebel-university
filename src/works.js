@@ -23,12 +23,14 @@ export class OpenLibrary {
     this.cache = new Map();
   }
 
-  async search(query) {
+  // allowFetch: called only when the answer is not cached, to cap upstream calls.
+  async search(query, { allowFetch = () => true } = {}) {
     const q = clean(query, 120, { keepUrls: true });
     if (q.length < 2) return [];
     const key = q.toLowerCase();
     const hit = this.cache.get(key);
     if (hit && hit.until > Date.now()) return hit.results;
+    if (!allowFetch()) throw new Error('Open Library lookups are paused for a few minutes');
 
     const url = `${this.baseUrl}/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,first_publish_year&limit=12`;
     const res = await this.fetch(url, { headers: { 'User-Agent': this.userAgent, Accept: 'application/json' }, signal: AbortSignal.timeout(6000), redirect: 'error' });
@@ -47,8 +49,9 @@ export class OpenLibrary {
       if (!isOlWorkKey(olKey) || typeof d.title !== 'string') continue;
       results.push({
         olKey,
-        title: clean(d.title, 300, { keepUrls: true }),
-        creator: clean([...new Set(Array.isArray(d.author_name) ? d.author_name : [])].slice(0, 3).join(', '), 200, { keepUrls: true }),
+        // Open Library is publicly editable, so its text is cleaned like user input (second review, finding 6).
+        title: clean(d.title, 300),
+        creator: clean([...new Set(Array.isArray(d.author_name) ? d.author_name : [])].slice(0, 3).join(', '), 200),
         year: Number.isInteger(d.first_publish_year) ? d.first_publish_year : null,
       });
     }

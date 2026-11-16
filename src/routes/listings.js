@@ -2,7 +2,7 @@ import { html } from '../html.js';
 import { page } from '../app.js';
 import { workLabel } from '../views.js';
 import { clean, normalizeForKey } from '../text.js';
-import { unmatched } from '../matching.js';
+import { boardUnmatched } from '../matching.js';
 import { workRef, meetingLine } from './requests.js';
 
 const PAGE = 100;
@@ -10,13 +10,16 @@ const PAGE = 100;
 export default function register(app) {
   const { router, store, places } = app;
 
-  // The board is recomputed only when open requests changed, and at most every
-  // boardMinMs, so a flood of page views can't keep the CPU busy.
-  let cache = { version: -1, at: 0, lonely: [] };
+  // The board is recomputed only when open requests changed, and at most once
+  // per boardMinMs (an hour by default). That bounds the CPU spent on it, and it
+  // matches the hour-rounded timestamps: watching the board can't time a post
+  // more precisely than the database could (second review, findings 3 and 4).
+  let cache = { version: -1, at: -Infinity, lonely: [] };
+  const locate = (id) => places.get(id);
   function lonelyRequests() {
     const stale = cache.version !== store.version;
-    if (stale && app.now() - cache.at >= (app.config.boardMinMs ?? 15_000)) {
-      cache = { version: store.version, at: app.now(), lonely: unmatched(store.openRequests(), app.distanceKm) };
+    if (stale && app.now() - cache.at >= (app.config.boardMinMs ?? 3600_000)) {
+      cache = { version: store.version, at: app.now(), lonely: boardUnmatched(store.openRequests(), app.distanceKm, locate) };
     }
     return cache.lonely;
   }

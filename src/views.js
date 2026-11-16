@@ -1,5 +1,6 @@
 import { html, raw } from './html.js';
 import { RADII_KM, radiusWorkFactor } from './matching.js';
+import { POW_CAP } from './ratelimit.js';
 
 // Shared layout and small components.
 
@@ -63,7 +64,7 @@ export function noticeBox(msg) {
 export function guard(ctx, { pow = false, powBy = null } = {}) {
   const parts = [html`<input type="hidden" name="_csrf" value="${ctx.csrf}">`];
   if (pow) {
-    const base = ctx.app.powDifficulty(ctx.ipKey);
+    const base = ctx.app.powDifficulty(ctx.ipKey, ctx.ipKey48);
     const challenge = ctx.app.pow.create(base, ctx.ipKey, 1);
     let byAttrs = '';
     if (powBy) {
@@ -71,7 +72,7 @@ export function guard(ctx, { pow = false, powBy = null } = {}) {
       const map = {};
       for (const km of RADII_KM) {
         const f = radiusWorkFactor(km);
-        if (!byFactor.has(f)) byFactor.set(f, ctx.app.pow.create(base * f, ctx.ipKey, f));
+        if (!byFactor.has(f)) byFactor.set(f, ctx.app.pow.create(Math.min(base * f, POW_CAP), ctx.ipKey, f));
         map[km] = byFactor.get(f);
       }
       byAttrs = html` data-challenge-by="${powBy}" data-challenges="${JSON.stringify(map)}"`;

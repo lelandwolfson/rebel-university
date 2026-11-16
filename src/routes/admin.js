@@ -46,9 +46,12 @@ export default function register(app) {
     // Form check first, then a per-IP limit. No site-wide cap: one IP could
     // otherwise lock the admin out. The 32+ character secret makes guessing futile.
     if (checkForm(ctx)) return loginPage(ctx, ctx.t('err.form'), 400);
-    if (!app.limiter.hit('admin-login', ctx.ipKey, 5, 15 * 60 * 1000)) return loginPage(ctx, ctx.t('err.rate'), 429);
+    if (!app.limiter.hit('admin-login', ctx.ipKey, 5, 15 * 60 * 1000) || !app.limiter.hit('admin-login', `48|${ctx.ipKey48}`, 20, 15 * 60 * 1000)) {
+      return loginPage(ctx, ctx.t('err.rate'), 429);
+    }
     if (!safeEqual(ctx.body.secret || '', config.adminSecret)) {
-      store.audit('login failed');
+      // At most one audit row per 15 minutes, so failed logins can't flood the log.
+      if (!app.limiter.seen('admin-login', 'audit-failed', 15 * 60 * 1000)) store.audit('login failed (one or more)');
       return loginPage(ctx, 'Wrong secret.', 403);
     }
     const token = crypto.randomBytes(32).toString('base64url');
@@ -103,7 +106,7 @@ export default function register(app) {
       }
       default: throw new HttpError(400);
     }
-    redirect(ctx, `/admin?done=${encodeURIComponent(`${b.action}: ${n}`)}`);
+    redirect(ctx, `/admin?done=${encodeURIComponent(b.action)}&n=${n}`);
   });
 
   function dashboard(ctx, error = null) {
@@ -113,14 +116,18 @@ export default function register(app) {
     const reqs = store.recentRequests(200);
     const meetings = store.recentMeetings(200);
     const log = store.auditLog(50);
-    const done = ctx.query.get('done');
+    // Only known action names are echoed back, never arbitrary text from the URL.
+    const DONE = { hold_on: 'Holding hand-entered works', hold_off: 'Stopped holding', approve_work: 'Approved', remove_work: 'Removed works',
+      remove_request: 'Removed requests', remove_meeting: 'Removed meetings', dismiss_report: 'Dismissed reports', bulk_recent: 'Bulk removed' };
+    const doneKey = ctx.query.get('done');
+    const done = DONE[doneKey] ? `${DONE[doneKey]}: ${Number.parseInt(ctx.query.get('n') || '0', 10) || 0}` : null;
     const area = (r) => (r.onlineOnly ? 'Online' : places.regionLabel(r.placeId) || '?');
     const action = (name, label, cls = '') => html`<button type="submit" name="action" value="${name}" class="${cls}">${label}</button>`;
 
     page(ctx, {
       title: 'Admin', noindex: true,
       body: html`<h1>Admin</h1>
-${noticeBox(done ? `Done (${done})` : null)}${errorBox(error)}
+${noticeBox(done)}${errorBox(error)}
 <form method="post" action="/admin/logout" class="inline">${guard(ctx)}<button class="link" type="submit">Sign out</button></form>
 
 <section class="admin">

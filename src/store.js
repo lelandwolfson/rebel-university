@@ -127,6 +127,13 @@ export class Store {
 
   hour() { return toHour(this.now()); }
 
+  // secure_delete overwrites deleted rows in the main file, but old copies stay in
+  // the write-ahead log until it is reused. Checkpoint and truncate it after
+  // deletions so "deleted" means gone from disk too (second review, finding 11).
+  scrub() {
+    try { this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* busy: the hourly job retries */ }
+  }
+
   close() { this.db.close(); }
 
   // ---- settings
@@ -180,13 +187,16 @@ export class Store {
   openRequestsForWork(workId) {
     return this.sql("SELECT * FROM requests WHERE work_id = ? AND status = 'open'").all(workId).map(toRequest);
   }
+  openRequestCountForWork(workId) {
+    return this.sql("SELECT COUNT(*) AS n FROM requests WHERE work_id = ? AND status IN ('open','held')").get(workId).n;
+  }
   openRequests() { return this.sql("SELECT * FROM requests WHERE status = 'open'").all().map(toRequest); }
-  deleteRequest(id) { this.version++; return this.sql('DELETE FROM requests WHERE id = ?').run(id).changes; }
+  deleteRequest(id) { this.version++; const n = this.sql('DELETE FROM requests WHERE id = ?').run(id).changes; this.scrub(); return n; }
   setRequestRadius(id, radiusKm) {
     this.version++;
     this.sql('UPDATE requests SET radius_km = ? WHERE id = ?').run(radiusKm, id);
   }
-  clearRequestEmail(id) { this.sql('UPDATE requests SET email_enc = NULL WHERE id = ?').run(id); }
+  clearRequestEmail(id) { this.sql('UPDATE requests SET email_enc = NULL WHERE id = ?').run(id); this.scrub(); }
   markNotified(id) { this.sql('UPDATE requests SET last_notified_hour = ? WHERE id = ?').run(this.hour(), id); }
   recentRequests(limit = 200) {
     return this.sql(`SELECT r.*, w.title, w.creator, w.kind FROM requests r JOIN works w ON w.id = r.work_id
@@ -213,7 +223,7 @@ export class Store {
       WHERE id = ?`).run(format, placeId ?? null, startsUtc, tz, venue, videoUrl, note, toHour(startsUtc) + 30 * 24, id);
   }
   setMeetingStatus(id, status) { this.sql('UPDATE meetings SET status = ? WHERE id = ?').run(status, id); }
-  deleteMeeting(id) { return this.sql('DELETE FROM meetings WHERE id = ?').run(id).changes; }
+  deleteMeeting(id) { const n = this.sql('DELETE FROM meetings WHERE id = ?').run(id).changes; this.scrub(); return n; }
   upcomingMeetings({ sinceMs, workId = null, limit = 100, offset = 0 }) {
     const rows = workId == null
       ? this.sql(`SELECT m.*, w.title, w.creator, w.kind FROM meetings m JOIN works w ON w.id = m.work_id
@@ -243,7 +253,9 @@ export class Store {
   }
   attendeeCount(meetingId) { return this.sql('SELECT COUNT(*) AS n FROM attendees WHERE meeting_id = ?').get(meetingId).n; }
   removeAttendee(meetingId, attendeeId) {
-    return this.sql('DELETE FROM attendees WHERE id = ? AND meeting_id = ? AND is_organizer = 0').run(attendeeId, meetingId).changes;
+    const n = this.sql('DELETE FROM attendees WHERE id = ? AND meeting_id = ? AND is_organizer = 0').run(attendeeId, meetingId).changes;
+    this.scrub();
+    return n;
   }
 
   // ---- reports
@@ -276,13 +288,15 @@ export class Store {
   cleanup() {
     const h = this.hour();
     this.version++;
-    return this.tx(() => ({
+    const r = this.tx(() => ({
       requests: this.sql('DELETE FROM requests WHERE expires_hour <= ?').run(h).changes,
       meetings: this.sql('DELETE FROM meetings WHERE delete_after_hour <= ?').run(h).changes,
       works: this.sql(`DELETE FROM works WHERE NOT EXISTS (SELECT 1 FROM requests r WHERE r.work_id = works.id)
         AND NOT EXISTS (SELECT 1 FROM meetings m WHERE m.work_id = works.id) AND created_hour < ?`).run(h - 1).changes,
       audit: this.sql('DELETE FROM audit_log WHERE at_hour < ?').run(h - 180 * 24).changes,
     }));
+    this.scrub();
+    return r;
   }
 
   backup(file) {

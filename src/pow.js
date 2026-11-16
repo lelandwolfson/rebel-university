@@ -31,8 +31,9 @@ export class ProofOfWork {
   }
 
   // Returns { ok, issued } or { ok: false, reason }.
-  // ipKey: the submitting client's key; minMax: the lowest difficulty still accepted;
-  // minFactor: the work multiplier the submitted action requires.
+  // ipKey: the submitting client's key; minMax: the lowest difficulty accepted, already
+  // including any factor; minFactor: the work multiplier the action requires (checked
+  // against the factor the challenge was issued for, so a cheaper challenge can't stand in).
   verify(encoded, { ipKey = '', minMax = 0, minFactor = 1 } = {}) {
     if (typeof encoded !== 'string' || encoded.length > 1000) return { ok: false, reason: 'missing' };
     let p;
@@ -48,7 +49,7 @@ export class ProofOfWork {
     if (this.now() > expires) return { ok: false, reason: 'expired' };
     if (m[5] !== String(ipKey).slice(0, 8)) return { ok: false, reason: 'ip' };
     if (factor < minFactor) return { ok: false, reason: 'factor' };
-    if (max < minMax * minFactor) return { ok: false, reason: 'difficulty' };
+    if (max < minMax) return { ok: false, reason: 'difficulty' };
     if (this.used.has(p.challenge)) return { ok: false, reason: 'replay' };
     this.used.set(p.challenge, expires);
     return { ok: true, issued };

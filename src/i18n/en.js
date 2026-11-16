@@ -76,7 +76,7 @@ export default {
   'request.manual.title': 'Title',
   'request.manual.creator': 'Author or creator',
   'request.manual.link': 'Link to the work (optional)',
-  'request.manual.linkHint': 'Shown only to people who join a meeting about it.',
+  'request.manual.linkHint': 'Shown only to people who join a meeting about it. Works with a link are checked by the site admin before they appear.',
   'request.adults': 'By posting you confirm you are 18 or older. Meeting anyone is always your choice.',
 
   'manage.title': 'Your request',
@@ -147,7 +147,7 @@ export default {
   'report.thanks': 'Thank you. The site admin will look at it.',
 
   'board.title': 'Open board',
-  'board.intro': 'Works that someone wants to discuss, with no match yet. No names. If you want to discuss one too, post your own request.',
+  'board.intro': 'Works that someone wants to discuss, with nobody nearby or on video yet. No names. If you want to discuss one too, post your own request. The board is updated about once an hour.',
   'board.empty': 'Nothing on the board right now.',
   'board.join': 'I want to discuss this too',
 

@@ -1,5 +1,5 @@
 import { html } from '../html.js';
-import { page, redirect, checkForm, allowWrite, tokenLookupAllowed } from '../app.js';
+import { page, redirect, checkForm, allowWrite, allowScoped, tokenLookupAllowed } from '../app.js';
 import { HttpError } from '../http.js';
 import { guard, powScript, workLabel, errorBox, noticeBox, field, formatLabel, tips } from '../views.js';
 import { newToken, hashToken, isTokenShape, randomId } from '../security.js';
@@ -10,6 +10,26 @@ import { notifyNewMeeting, background } from '../notify.js';
 
 export const MAX_ATTENDEES = 100;
 const REASONS = ['unsafe', 'spam', 'minor', 'other'];
+
+// Block keys for "this address in this meeting", in both tiers. A removal
+// blocks the /64 and its /48 (usually one household on IPv6).
+function kickKeys(ctx, meetingId) {
+  const l = ctx.app.limiter;
+  return [l.scoped(ctx.ipKey, `kick:${meetingId}`), l.scoped(ctx.ipKey48, `kick48:${meetingId}`)];
+}
+
+// Checked with today's and yesterday's address keys, so the block outlives the
+// daily key rotation (second review, finding 9).
+function isKicked(ctx, meetingId) {
+  const l = ctx.app.limiter;
+  const keys = [
+    ...kickKeys(ctx, meetingId),
+    l.scopedPrev(ctx.ipKeyPrev, `kick:${meetingId}`), l.scopedPrev(ctx.ipKey48Prev, `kick48:${meetingId}`),
+    // a block written yesterday with yesterday's keys, checked against today's address
+    ctx.ipKeyPrev && l.scoped(ctx.ipKeyPrev, `kick:${meetingId}`), ctx.ipKey48Prev && l.scoped(ctx.ipKey48Prev, `kick48:${meetingId}`),
+  ];
+  return keys.some((k) => k && l.count('kicked', k) > 0);
+}
 
 function isMeetingId(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{12}$/.test(id); }
 
@@ -128,7 +148,7 @@ ${powScript()}`,
       id: randomId(9), workId: r.workId, placeId: v.placeId, format: v.format, startsUtc: v.startsUtc, tz: v.tz,
       venue: v.venue, videoUrl: v.videoUrl, note: v.note, organizerTokenHash: hashToken(token), organizerName: v.name,
     });
-    app.recordWrite(ctx.ipKey);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48);
     background(app, notifyNewMeeting(app, meeting, store.getWork(r.workId), r.id));
     redirect(ctx, `/a/${token}?new=1`);
   });
@@ -187,7 +207,7 @@ ${powScript()}`}
     const err = checkForm(ctx, { pow: true });
     if (err) return publicMeetingPage(ctx, m, { error: err, name, status: 400 });
     if (!allowWrite(ctx, 'join', 30)) return publicMeetingPage(ctx, m, { error: ctx.t('err.rate'), name, status: 429 });
-    if (app.limiter.count('kicked', `${m.id}|${ctx.ipKey}`) > 0 || !app.limiter.hit('join-meeting', `${m.id}|${ctx.ipKey}`, 3, 24 * 3600 * 1000)) {
+    if (isKicked(ctx, m.id) || !allowScoped(ctx, 'join-meeting', `meet:${m.id}`, 3, 24 * 3600 * 1000)) {
       return publicMeetingPage(ctx, m, { error: 'You cannot join this meeting again from here.', name, status: 429 });
     }
     if (m.status !== 'open' || m.startsUtc < app.now() - 3600 * 1000 || store.attendeeCount(m.id) >= MAX_ATTENDEES) {
@@ -198,8 +218,11 @@ ${powScript()}`}
     const token = newToken();
     const attendeeId = store.addAttendee(m.id, hashToken(token), display);
     // Memory only, for 24 hours: lets an organizer's removal stick.
-    app.joinedFrom.set(attendeeId, { ipKey: ctx.ipKey, until: app.now() + 24 * 3600 * 1000 });
-    app.recordWrite(ctx.ipKey);
+    // Memory only, for 24 hours, so an organizer's removal sticks. Stores only the
+    // per-meeting block keys, which can't be linked to anything else.
+    app.joinedFrom.set(attendeeId, { keys: kickKeys(ctx, m.id), until: app.now() + 24 * 3600 * 1000 });
+    if (app.joinedFrom.size > 100_000) app.joinedFrom.delete(app.joinedFrom.keys().next().value);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48);
     redirect(ctx, `/a/${token}?new=1`);
   });
 
@@ -242,7 +265,7 @@ ${powScript()}`,
     if (!allowWrite(ctx, 'report', 10)) return reportPage(ctx, m, { error: ctx.t('err.rate'), status: 429 });
     const reason = REASONS.includes(ctx.body.reason) ? ctx.body.reason : 'other';
     if (store.reportCountForMeeting(m.id) < 50) store.addReport(m.id, reason, clean(ctx.body.text, 500));
-    app.recordWrite(ctx.ipKey);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48);
     reportPage(ctx, m, { done: true });
   });
 
@@ -357,7 +380,7 @@ ${tips(ctx, { bring: inPerson })}
     const id = Number(ctx.body.attendee);
     if (Number.isInteger(id) && store.removeAttendee(d.m.id, id)) {
       const from = app.joinedFrom.get(id);
-      if (from) app.limiter.seen('kicked', `${d.m.id}|${from.ipKey}`, 24 * 3600 * 1000);
+      if (from) for (const k of from.keys) app.limiter.seen('kicked', k, 24 * 3600 * 1000);
       app.joinedFrom.delete(id);
     }
     redirect(ctx, `/a/${d.token}`);

@@ -1,7 +1,7 @@
 import { Store } from './store.js';
 import { Places } from './geo.js';
 import { ProofOfWork } from './pow.js';
-import { RateLimiter, powDifficulty, recordWrite } from './ratelimit.js';
+import { RateLimiter, powDifficulty, recordWrite, POW_CAP } from './ratelimit.js';
 import { OpenLibrary } from './works.js';
 import { createMailer } from './mail.js';
 import { translator } from './i18n/index.js';
@@ -36,8 +36,8 @@ export function createApp(config, { store, places, mailer, openLibrary, now = ()
     joinedFrom: new Map(), // attendee id -> { ipKey, until }; memory only
   };
   app.distanceKm = (a, b) => app.places.distanceKm(a, b);
-  app.powDifficulty = (ipKey) => powDifficulty(app.limiter, ipKey, config.powBase);
-  app.recordWrite = (ipKey) => recordWrite(app.limiter, ipKey);
+  app.powDifficulty = (ipKey, ipKey48) => powDifficulty(app.limiter, ipKey, config.powBase, ipKey48);
+  app.recordWrite = (ipKey, ipKey48) => recordWrite(app.limiter, ipKey, ipKey48);
 
   for (const register of [pages, requests, meetings, listings, admin]) register(app);
 
@@ -68,7 +68,11 @@ async function handle(app, req, res) {
     ctx.url = url;
     ctx.query = url.searchParams;
     ctx.ip = clientIp(req, config.trustProxy);
-    ctx.ipKey = app.limiter.ipHash(ctx.ip);
+    const keys = app.limiter.ipKeys(ctx.ip);
+    ctx.ipKey = keys.k64; // the /64 (IPv6) or the address (IPv4)
+    ctx.ipKey48 = keys.k48; // the /48, a coarser tier for IPv6
+    ctx.ipKeyPrev = keys.prev64; // yesterday's key, so blocks survive the daily rotation
+    ctx.ipKey48Prev = keys.prev48;
     ctx.cookies = parseCookies(req.headers.cookie);
 
     const cname = csrfCookieName(secure);
@@ -79,7 +83,7 @@ async function handle(app, req, res) {
       ctx.csrfFresh = true;
     }
 
-    if (!app.limiter.hit('req', ctx.ipKey, 600, 10 * 60 * 1000)) throw new HttpError(429);
+    if (!app.limiter.hit('req', ctx.ipKey, 600, 10 * 60 * 1000) || !app.limiter.hit('req', `48|${ctx.ipKey48}`, 6000, 10 * 60 * 1000)) throw new HttpError(429);
 
     const m = app.router.match(req.method, url.pathname);
     if (!m) throw new HttpError(404);
@@ -141,18 +145,30 @@ export function checkForm(ctx, { pow = false, factor = 1 } = {}) {
   if (!pow) return null;
   if (ctx.body.website) return why('honeypot');
   // Difficulty may rise between page load and submit; allow 4x slack, no more.
-  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax: Math.floor(app.powDifficulty(ctx.ipKey) / 4), minFactor: factor });
+  // The required work is capped, so stacked multipliers can't lock honest people out (second review, finding 5).
+  const minMax = Math.min(Math.floor(app.powDifficulty(ctx.ipKey, ctx.ipKey48) / 4) * factor, Math.floor(POW_CAP / 4));
+  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax, minFactor: factor });
   if (!r.ok) return why(`pow ${r.reason}`);
   if (app.now() - r.issued < app.config.minFormMs) return t('err.tooFast');
   return null;
 }
 
 // Rate limit for a write action. Returns true if allowed.
+// Applies per /64 (or IPv4 address) and, 8 times looser, per /48.
 export function allowWrite(ctx, bucket, limit, windowMs = 60 * 60 * 1000) {
-  return ctx.app.limiter.hit(`w:${bucket}`, ctx.ipKey, limit, windowMs);
+  const l = ctx.app.limiter;
+  return l.hit(`w:${bucket}`, ctx.ipKey, limit, windowMs) && l.hit(`w48:${bucket}`, ctx.ipKey48, limit * 8, windowMs);
+}
+
+// A per-address budget about one thing (a work, a meeting), in both tiers,
+// keyed so the counters can't be linked to each other in memory.
+export function allowScoped(ctx, bucket, scope, limit, windowMs) {
+  const l = ctx.app.limiter;
+  return l.hit(bucket, l.scoped(ctx.ipKey, scope), limit, windowMs)
+    && l.hit(`${bucket}48`, l.scoped(ctx.ipKey48, scope), limit * 4, windowMs);
 }
 
 // Slow down anyone trying lots of private links.
 export function tokenLookupAllowed(ctx) {
-  return ctx.app.limiter.hit('token', ctx.ipKey, 200, 10 * 60 * 1000);
+  return ctx.app.limiter.hit('token', ctx.ipKey, 200, 10 * 60 * 1000) && ctx.app.limiter.hit('token', `48|${ctx.ipKey48}`, 2000, 10 * 60 * 1000);
 }

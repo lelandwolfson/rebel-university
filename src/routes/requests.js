@@ -1,5 +1,5 @@
 import { html } from '../html.js';
-import { page, redirect, checkForm, allowWrite, tokenLookupAllowed } from '../app.js';
+import { page, redirect, checkForm, allowWrite, allowScoped, tokenLookupAllowed } from '../app.js';
 import { HttpError } from '../http.js';
 import { guard, powScript, workLabel, errorBox, noticeBox, field, formatLabel } from '../views.js';
 import { newToken, hashToken, isTokenShape, signValue, verifyValue, encrypt } from '../security.js';
@@ -9,6 +9,7 @@ import { matchesFor, meetingFitsRequest, RADII_KM, DEFAULT_RADIUS_KM, isRadius, 
 import { sendConfirmation, notifyNewRequest, background } from '../notify.js';
 
 const FORMATS = ['either', 'in_person', 'video'];
+export const MAX_OPEN_PER_WORK = 2000;
 
 function radiusOptions(ctx, selected) {
   return RADII_KM.map((km) => html`<label class="radio"><input type="radio" name="radius" value="${km}"${km === selected ? ' checked' : ''}> ${ctx.t('radius.option', { km, mi: kmToMiles(km) })}</label>`);
@@ -22,13 +23,16 @@ function radiusFromBody(b, inPerson) {
 }
 
 // A signed reference to a chosen work travels through the URL and forms.
-export function workRef(app, value) { return signValue(app.config.keys.sign, value); }
+// References expire after a day, so a reference to an old (since vandalized
+// and reverted) catalogue entry can't be replayed later (second review, finding 6).
+const REF_TTL_MS = 24 * 3600 * 1000;
+export function workRef(app, value) { return signValue(app.config.keys.sign, { ...value, x: app.now() + REF_TTL_MS }); }
 
 function resolveRef(app, signed) {
   const v = verifyValue(app.config.keys.sign, signed);
-  if (!v) return null;
+  if (!v || !Number.isFinite(v.x) || v.x < app.now()) return null;
   if (v.k === 'ol' && isOlWorkKey(v.ol) && typeof v.t === 'string') {
-    return { kind: 'book', olKey: v.ol, title: clean(v.t, 300, { keepUrls: true }), creator: clean(v.c || '', 200, { keepUrls: true }) };
+    return { kind: 'book', olKey: v.ol, title: clean(v.t, 300), creator: clean(v.c || '', 200) };
   }
   if (v.k === 'id' && Number.isInteger(v.id)) {
     const w = app.store.getWork(v.id);
@@ -56,9 +60,8 @@ export default function register(app) {
     let results = null;
     let error = null;
     if (q.length >= 2) {
-      if (!app.limiter.hit('olsearch', ctx.ipKey, 40, 10 * 60 * 1000)) throw new HttpError(429);
-      if (!app.limiter.hit('olsearch', '*', 600, 10 * 60 * 1000)) { error = t('err.lookup'); }
-      if (!error) { try { results = await app.openLibrary.search(q); } catch { error = t('err.lookup'); } }
+      if (!app.limiter.hit('olsearch', ctx.ipKey, 40, 10 * 60 * 1000) || !app.limiter.hit('olsearch', `48|${ctx.ipKey48}`, 160, 10 * 60 * 1000)) throw new HttpError(429);
+      try { results = await app.openLibrary.search(q, { allowFetch: () => app.limiter.hit('olsearch', '*', 600, 10 * 60 * 1000) }); } catch { error = t('err.lookup'); }
     }
     page(ctx, {
       title: t('request.title'),
@@ -115,7 +118,9 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
         if (!link) return fail('The link must be a full https:// address.');
       }
       if (!kind || title.length < 1 || creator.length < 1) return fail('Please give the kind of work, its title, and its author or creator.');
-      work = store.findOrCreateWork({ kind, title, creator, link, normKey: manualNormKey(kind, title, creator), held: store.holdManual() });
+      // A hand-entered work that carries a link is always checked by the admin before it
+      // appears: the first poster's link is shown to everyone who meets about it (second review, finding 6).
+      work = store.findOrCreateWork({ kind, title, creator, link, normKey: manualNormKey(kind, title, creator), held: store.holdManual() || !!link });
     }
 
     // Place and format.
@@ -140,20 +145,23 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
       emailEnc = encrypt(config.keys.email, email);
     }
 
-    if (app.limiter.seen('dup', `${ctx.ipKey}|${work.id}|${placeId ?? 'online'}`, 60 * 60 * 1000)) return fail(t('err.duplicate'), 429);
+    if (app.limiter.seen('dup', app.limiter.scoped(ctx.ipKey, `dup:${work.id}|${placeId ?? 'online'}`), 60 * 60 * 1000)) return fail(t('err.duplicate'), 429);
     // Posting the same work from many cities would let someone triangulate where a reader is.
-    if (!app.limiter.hit('work-per-ip', `${ctx.ipKey}|${work.id}`, 3, 24 * 3600 * 1000)) return fail(t('err.rate'), 429);
+    if (!allowScoped(ctx, 'work-per-ip', `work:${work.id}`, 3, 24 * 3600 * 1000)) return fail(t('err.rate'), 429);
+    // Bounds the work any one title can cause (second review, finding 3). Far above real use.
+    if (store.openRequestCountForWork(work.id) >= MAX_OPEN_PER_WORK) return fail('This work already has a great many open requests. Please look for a meeting about it on the meetings page.', 429);
 
     const token = newToken();
     const request = store.createRequest({
       tokenHash: hashToken(token), workId: work.id, placeId, onlineOnly, format, radiusKm, emailEnc,
       status: work.held ? 'held' : 'open',
     });
-    app.recordWrite(ctx.ipKey);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48);
 
     const matchCount = request.status === 'open'
       ? matchesFor(request, store.openRequestsForWork(work.id), app.distanceKm).length : 0;
-    if (email) background(app, sendConfirmation(app, { email, token, work, matchCount }));
+    // Nothing is emailed for a held request: the address might not be the poster's (second review, finding 7).
+    if (email && request.status === 'open') background(app, sendConfirmation(app, { email, token, matchCount }));
     background(app, notifyNewRequest(app, request, work));
     redirect(ctx, `/r/${token}?new=1`);
   });
@@ -225,9 +233,9 @@ ${inPerson && r.status === 'open' ? html`<details class="quiet"><summary>${t('ma
     if (checkForm(ctx, { pow: true, factor: radiusWorkFactor(n) })) throw new HttpError(400, 'err.form');
     if (n === r.radiusKm) return redirect(ctx, `/r/${ctx.params.token}`);
     if (!app.limiter.hit('radius-change', r.id, 3, 24 * 3600 * 1000)
-      || !app.limiter.hit('work-per-ip', `${ctx.ipKey}|${r.workId}`, 3, 24 * 3600 * 1000)) throw new HttpError(429);
+      || !allowScoped(ctx, 'work-per-ip', `work:${r.workId}`, 3, 24 * 3600 * 1000)) throw new HttpError(429);
     app.store.setRequestRadius(r.id, n);
-    app.recordWrite(ctx.ipKey);
+    app.recordWrite(ctx.ipKey, ctx.ipKey48);
     const updated = app.store.getRequest(r.id);
     background(app, notifyNewRequest(app, updated, app.store.getWork(r.workId)));
     redirect(ctx, `/r/${ctx.params.token}?radius=changed`);

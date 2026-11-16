@@ -134,6 +134,7 @@ test('proof of work: review finding 2, challenges are bound to the IP and to the
   assert.equal(pow.verify(solvePow(pow.create(100, 'ipA')), { ipKey: 'ipB' }).reason, 'ip');
   assert.equal(pow.verify(solvePow(pow.create(100, 'ipA')), { ipKey: 'ipA', minMax: 400 }).reason, 'difficulty');
   assert.equal(pow.verify(solvePow(pow.create(400, 'ipA')), { ipKey: 'ipA', minMax: 400 }).ok, true);
+  assert.equal(pow.verify(solvePow(pow.create(400, 'ipA', 4)), { ipKey: 'ipA', minMax: 400, minFactor: 16 }).reason, 'factor');
 });
 
 test('proof of work difficulty rises per IP and site-wide', () => {

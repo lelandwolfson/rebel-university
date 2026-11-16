@@ -68,7 +68,8 @@ test('email: confirmation with the link, then one match notice', async () => {
   const toA = s.mailer.sent.filter((m) => m.to === 'reader-a@example.org');
   assert.equal(toA.length, 2);
   assert.ok(toA[0].text.includes(`/r/${state.tokenA}`));
-  assert.match(toA[1].text, /Someone else wants to discuss "Deschooling Society"/);
+  assert.match(toA[1].text, /Someone else wants to discuss the work in your request/);
+  for (const m of toA) assert.ok(!m.text.includes('Deschooling'), 'emails never carry titles (second review, finding 7)');
   assert.ok(!toA[1].text.includes(state.tokenB));
   assert.match(toA[1].text, /public place/);
 });
@@ -218,13 +219,21 @@ test('hand-entered works are escaped, matched by normalized title, and links sta
   const c = new Client(s.base);
   const res = await c.submit('/request/new/details?manual=1&place_q=paris', '/request', {
     kind: 'film', title: '<script>alert(1)</script> The Battle of Algiers', creator: 'Gillo Pontecorvo',
-    link: 'https://example.org/battle', place: 'online', format: 'video',
+    place: 'online', format: 'video',
   });
   assert.equal(res.status, 303, res.text.slice(0, 1500));
+  // A work entered with a link is held for review and never public (second review, finding 6).
+  const withLink = await new Client(s.base).submit('/request/new/details?manual=1', '/request', {
+    kind: 'article', title: 'Some Linked Essay', creator: 'A. Writer', link: 'https://example.org/battle', place: 'online', format: 'video',
+  });
+  assert.equal(withLink.status, 303);
+  assert.match((await c.get(withLink.location)).text, /being reviewed/);
+  assert.equal(s.store.db.prepare("SELECT held FROM works WHERE title = 'Some Linked Essay'").get().held, 1);
   const board = await c.get('/board');
   assert.ok(!board.text.includes('<script>alert(1)'));
   assert.match(board.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt; The Battle of Algiers/);
   assert.ok(!board.text.includes('example.org/battle'), 'manual link not public');
+  assert.ok(!board.text.includes('Some Linked Essay'), 'held work not on the board');
 
   const d = new Client(s.base);
   const res2 = await d.submit('/request/new/details?manual=1&place_q=paris', '/request', {
@@ -313,7 +322,8 @@ test('admin hold switch holds new hand-entered works until approved', async () =
   assert.doesNotMatch((await b.get(`/r/${tok}`)).text, /being reviewed/);
 
   dash = await admin.get('/admin');
-  const workId = /name="id" value="(\d+)"/.exec(dash.text.slice(dash.text.indexOf('Hand-entered works')))[1];
+  const workId = String(s.store.db.prepare("SELECT id FROM works WHERE title = 'Totally Unique Spam Title'").get().id);
+  assert.ok(dash.text.includes(`value="${workId}"`), 'listed on the admin page');
   await admin.submit('/admin', '/admin/action', { action: 'approve_work', id: workId }, { page: dash });
   assert.match((await c.get('/board')).text, /Totally Unique Spam Title/);
   await admin.submit('/admin', '/admin/action', { action: 'hold_off' }, { page: await admin.get('/admin') });
@@ -341,6 +351,8 @@ test('static pages exist and security.txt is valid', async () => {
 });
 
 test('review finding 5: a later request cannot attach a link to an existing work', async () => {
+  const s = await startTestServer();
+  try {
   const c = new Client(s.base);
   const r1 = await c.submit('/request/new/details?manual=1&place_q=paris', '/request', {
     kind: 'film', title: 'Stalker', creator: 'Andrei Tarkovsky', place: PARIS, format: 'video',
@@ -353,6 +365,7 @@ test('review finding 5: a later request cannot attach a link to an existing work
   assert.equal(r2.status, 303);
   const w = s.store.db.prepare("SELECT link FROM works WHERE title = 'Stalker'").get();
   assert.equal(w.link, null);
+  } finally { await s.close(); }
 });
 
 test('review finding 6: one connection cannot probe a work from many cities', async () => {
