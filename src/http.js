@@ -40,7 +40,7 @@ export function securityHeaders(secure) {
     'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; manifest-src 'self'",
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
-    'Referrer-Policy': 'no-referrer',
+    'Referrer-Policy': 'same-origin', // no-referrer would make browsers send "Origin: null" on our own forms
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=(), browsing-topics=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
@@ -96,7 +96,7 @@ export function clientIp(req, trustProxy) {
   return req.socket.remoteAddress || 'unknown';
 }
 
-export function csrfCookieName(secure) { return secure ? '__Host-csrf' : 'csrf'; }
+export function csrfCookieName(secure) { return secure ? '__Host-ru_csrf' : 'ru_csrf'; }
 
 export function newCsrf() { return crypto.randomBytes(18).toString('base64url'); }
 

@@ -11,7 +11,7 @@ const hourLabel = (h) => new Date(h * 3600 * 1000).toISOString().slice(0, 13).re
 
 export default function register(app) {
   const { router, store, config, places } = app;
-  const cookieName = config.secureCookies ? '__Host-admin' : 'admin';
+  const cookieName = config.secureCookies ? '__Host-ru_admin' : 'ru_admin';
 
   function enabled() { if (!config.adminSecret) throw new HttpError(404); }
 

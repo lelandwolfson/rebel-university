@@ -279,11 +279,13 @@ ${cancelled ? html`<p class="notice">${t('meeting.cancelled')}</p>` : ''}
 ${a.isOrganizer && !cancelled ? html`<section class="tools">
   <h2>${t('meeting.tools')}</h2>
   <p class="hint">${t('meeting.toolsHint')}</p>
+  <details${edit ? ' open' : ''}><summary>${t('meeting.editSummary')}</summary>
   <form method="post" action="/a/${token}/edit">
     ${meetingFields(ctx, editValues, { placeId: m.placeId, defaultTz: m.tz, needName: false })}
     ${guard(ctx)}
     <button type="submit">${t('meeting.edit')}</button>
   </form>
+  </details>
   <form method="post" action="/a/${token}/close" class="inline">${guard(ctx)}<button class="secondary" type="submit">${m.status === 'closed' ? t('meeting.reopen') : t('meeting.closeToNew')}</button></form>
   <form method="post" action="/a/${token}/cancel" class="inline">${guard(ctx)}<button class="danger" type="submit">${t('meeting.cancel')}</button></form>
 </section>` : ''}

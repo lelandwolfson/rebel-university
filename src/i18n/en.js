@@ -121,6 +121,7 @@ export default {
   'meeting.privateLink': 'Save this page\'s address. It is your private way back to this meeting.',
   'meeting.tools': 'Organizer tools',
   'meeting.edit': 'Save changes',
+  'meeting.editSummary': 'Edit date, place, link, or note',
   'meeting.cancel': 'Cancel the meeting',
   'meeting.closeToNew': 'Close to new people',
   'meeting.reopen': 'Open to new people again',

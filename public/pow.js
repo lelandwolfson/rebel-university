@@ -76,7 +76,7 @@
       if (n > ch.maxnumber) return done(null);
       setTimeout(chunk, 0);
     }
-    chunk();
+    setTimeout(chunk, 0); // never block page load
   }
 
   function setup(form) {

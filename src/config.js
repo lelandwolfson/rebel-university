@@ -48,6 +48,7 @@ export function loadConfig(env = process.env, overrides = {}) {
     openLibraryUrl: (env.OPEN_LIBRARY_URL || 'https://openlibrary.org').replace(/\/+$/, ''),
     jobs: env.DISABLE_JOBS !== 'true',
     powBase: Number(env.POW_BASE || 60000),
+    formDebug: env.FORM_DEBUG === 'true',
     minFormMs: Number(env.MIN_FORM_MS ?? 3000),
     ...overrides,
   };

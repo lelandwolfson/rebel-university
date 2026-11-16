@@ -32,7 +32,7 @@ test('security headers on every page', async () => {
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-security-policy'), /default-src 'none'/);
   assert.match(r.headers.get('content-security-policy'), /frame-ancestors 'none'/);
-  assert.equal(r.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(r.headers.get('referrer-policy'), 'same-origin');
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.match(r.text, /adults \(18\+\)/i);
   assert.ok(!/<script(?![^>]*src="\/static\/)/.test(r.text), 'no inline scripts');
@@ -210,6 +210,8 @@ test('forms without CSRF token, proof-of-work, or with honeypot are refused', as
   const hidden = Object.fromEntries([...p.text.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)].map((m) => [m[1], decodeEntities(m[2])]));
   const cross = await c.request('POST', '/request', { ...hidden, place: PARIS, format: 'video' }, { Origin: 'https://evil.example' });
   assert.equal(cross.status, 400);
+  const nullOrigin = await c.request('POST', '/request', { ...hidden, place: PARIS, format: 'video' }, { Origin: 'null' });
+  assert.equal(nullOrigin.status, 400, 'sandboxed frames send Origin: null');
 });
 
 test('hand-entered works are escaped, matched by normalized title, and links stay private', async () => {
@@ -324,7 +326,7 @@ test('admin is unreachable without a session', async () => {
   const r = await c.request('POST', '/admin/action', { _csrf: csrf, action: 'hold_on' });
   assert.equal(r.status, 404);
   const forged = new Client(s.base);
-  forged.cookies.set('admin', 'x'.repeat(43));
+  forged.cookies.set('ru_admin', 'x'.repeat(43));
   assert.doesNotMatch((await forged.get('/admin')).text, /Audit log/);
 });
 

@@ -122,3 +122,4 @@ code { font-size: 0.85em; word-break: break-all; }
   .split { display: grid; grid-template-columns: 1fr 16rem; gap: 2rem; align-items: start; }
   .split .tips { margin-top: 1rem; }
 }
+details summary { cursor: pointer; font-weight: 600; margin: 0.5rem 0; }

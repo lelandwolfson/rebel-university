@@ -43,7 +43,7 @@ export class OpenLibrary {
       results.push({
         olKey,
         title: clean(d.title, 300, { keepUrls: true }),
-        creator: clean((Array.isArray(d.author_name) ? d.author_name.slice(0, 3) : []).join(', '), 200, { keepUrls: true }),
+        creator: clean([...new Set(Array.isArray(d.author_name) ? d.author_name : [])].slice(0, 3).join(', '), 200, { keepUrls: true }),
         year: Number.isInteger(d.first_publish_year) ? d.first_publish_year : null,
       });
     }

@@ -54,7 +54,7 @@ A full leak gives an attacker: a list of works people want to discuss, rough cit
 ### T3. Guessing or leaking private links
 - 256-bit tokens from `crypto.randomBytes`. Guessing is infeasible.
 - Only SHA-256 hashes stored. DB leak does not reveal live links.
-- `Referrer-Policy: no-referrer` so links don't leak to the video host or anywhere else.
+- `Referrer-Policy: same-origin` so links never leak to the video host or any other site. (`no-referrer` was tried; it makes browsers send `Origin: null` on our own forms.)
 - `Cache-Control: no-store` on private pages.
 - No logging of request paths.
 - Rate limit on token lookups per IP to slow any guessing anyway.

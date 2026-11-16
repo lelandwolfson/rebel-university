@@ -49,6 +49,7 @@ export class Client {
     const h = { ...headers };
     if (this.cookies.size) h.Cookie = [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     let body;
+    if (method === 'POST' && !('Origin' in h)) h.Origin = this.base; // as browsers do
     if (form) {
       h['Content-Type'] = 'application/x-www-form-urlencoded';
       body = new URLSearchParams(form).toString();

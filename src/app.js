@@ -129,11 +129,12 @@ export function redirect(ctx, location) {
 // Checks for every form submission. Returns an error message or null.
 export function checkForm(ctx, { pow = false } = {}) {
   const { app, t } = ctx;
-  if (!ctx.csrfValid) return t('err.form');
+  const why = (reason) => { if (app.config.formDebug) app.log.info(`form rejected: ${reason}`); return t('err.form'); };
+  if (!ctx.csrfValid) return why(`csrf (fresh=${!!ctx.csrfFresh} origin=${ctx.req.headers.origin || '-'})`);
   if (!pow) return null;
-  if (ctx.body.website) return t('err.form'); // honeypot
+  if (ctx.body.website) return why('honeypot');
   const r = app.pow.verify(ctx.body.pow);
-  if (!r.ok) return t('err.form');
+  if (!r.ok) return why(`pow ${r.reason}`);
   if (app.now() - r.issued < app.config.minFormMs) return t('err.tooFast');
   return null;
 }
