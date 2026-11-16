@@ -133,14 +133,15 @@ export function redirect(ctx, location) {
 }
 
 // Checks for every form submission. Returns an error message or null.
-export function checkForm(ctx, { pow = false } = {}) {
+// factor: extra proof-of-work the action needs (wider travel distances; THREAT-MODEL.md T1a).
+export function checkForm(ctx, { pow = false, factor = 1 } = {}) {
   const { app, t } = ctx;
   const why = (reason) => { if (app.config.formDebug) app.log.info(`form rejected: ${reason}`); return t('err.form'); };
   if (!ctx.csrfValid) return why(`csrf (fresh=${!!ctx.csrfFresh} origin=${ctx.req.headers.origin || '-'})`);
   if (!pow) return null;
   if (ctx.body.website) return why('honeypot');
   // Difficulty may rise between page load and submit; allow 4x slack, no more.
-  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax: Math.floor(app.powDifficulty(ctx.ipKey) / 4) });
+  const r = app.pow.verify(ctx.body.pow, { ipKey: ctx.ipKey, minMax: Math.floor(app.powDifficulty(ctx.ipKey) / 4), minFactor: factor });
   if (!r.ok) return why(`pow ${r.reason}`);
   if (app.now() - r.issued < app.config.minFormMs) return t('err.tooFast');
   return null;

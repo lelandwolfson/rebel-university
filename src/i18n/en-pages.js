@@ -16,7 +16,7 @@ export function home(ctx, tipsBlock) {
 <h2>How it works</h2>
 <ol class="steps">
   <li><strong>Name the work.</strong> Search for a book, or type in an article, film, or recording.</li>
-  <li><strong>Say roughly where you are</strong>, or choose online only, and whether you'd meet in person, on video, or either.</li>
+  <li><strong>Say roughly where you are</strong> and how far you'd travel, or choose online only, and whether you'd meet in person, on video, or either.</li>
   <li><strong>Keep your private link.</strong> No account, no name, no profile. An email for match notices is optional.</li>
   <li><strong>When someone else names the same work nearby</strong> (or on video), either of you can start a meeting. Anyone can join.</li>
   <li><strong>Meet in a public place</strong> with the work on the table so you can find each other. Stay as long as you like. Leave whenever you want.</li>
@@ -109,7 +109,7 @@ export function privacy(ctx) {
 <thead><tr><th>What</th><th>Why</th><th>Deleted</th></tr></thead>
 <tbody>
 <tr><td>The work you name (title, author or creator; for hand-entered works, an optional link)</td><td>It is the basis of a match</td><td>When no request or meeting uses it any more</td></tr>
-<tr><td>Your request: the work, the city you picked (or "online only"), the meeting format, the hour it was posted</td><td>To find matches</td><td>When you close it, or 90 days after posting</td></tr>
+<tr><td>Your request: the work, the city you picked (or "online only"), the meeting format, how far you will travel, the hour it was posted</td><td>To find matches</td><td>When you close it, or 90 days after posting</td></tr>
 <tr><td>A hash of your private link</td><td>To recognize the link when you return. We cannot turn the hash back into the link.</td><td>With the request or meeting</td></tr>
 <tr><td>Your email address, if you give one</td><td>To tell you a match exists. Encrypted. Never shown to anyone.</td><td>When you remove it, close the request, or the request expires</td></tr>
 <tr><td>Meetings: work, city, date, time zone, format, venue, video link, organizer note</td><td>To run the meeting</td><td>30 days after the meeting date</td></tr>
@@ -131,7 +131,7 @@ export function privacy(ctx) {
 <h2>Who sees what</h2>
 <ul>
   <li><strong>Everyone:</strong> the open board (works with no match yet, with region and country only), and the meeting listing (work, city, date, format).</li>
-  <li><strong>You, with your private link:</strong> your request and how many people match it.</li>
+  <li><strong>You, with your private link:</strong> your request, how far you said you will travel, and how many people match it. Nobody else sees your travel distance.</li>
   <li><strong>People who join a meeting:</strong> its venue, video link, note, and the display names of others who joined.</li>
   <li><strong>The site admin:</strong> requests and meetings (never emails), reports, and the audit log of admin actions.</li>
 </ul>

@@ -21,17 +21,19 @@ export class ProofOfWork {
     this.used = new Map(); // challenge -> expiry; prevents replay
   }
 
-  create(max, ipKey = '') {
+  // factor: the work multiplier this challenge was issued for (e.g. a wider travel distance).
+  create(max, ipKey = '', factor = 1) {
     const issued = this.now();
-    const salt = `${crypto.randomBytes(12).toString('hex')}?i=${issued}&e=${issued + TTL_MS}&m=${max}&k=${String(ipKey).slice(0, 8)}`;
+    const salt = `${crypto.randomBytes(12).toString('hex')}?i=${issued}&e=${issued + TTL_MS}&m=${max}&f=${factor}&k=${String(ipKey).slice(0, 8)}`;
     const number = crypto.randomInt(0, max + 1);
     const challenge = sha256(salt + number);
     return { algorithm: 'SHA-256', salt, challenge, maxnumber: max, signature: hmac(this.key, `${salt}|${challenge}`) };
   }
 
   // Returns { ok, issued } or { ok: false, reason }.
-  // ipKey: the submitting client's key; minMax: the lowest difficulty still accepted.
-  verify(encoded, { ipKey = '', minMax = 0 } = {}) {
+  // ipKey: the submitting client's key; minMax: the lowest difficulty still accepted;
+  // minFactor: the work multiplier the submitted action requires.
+  verify(encoded, { ipKey = '', minMax = 0, minFactor = 1 } = {}) {
     if (typeof encoded !== 'string' || encoded.length > 1000) return { ok: false, reason: 'missing' };
     let p;
     try { p = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')); } catch { return { ok: false, reason: 'malformed' }; }
@@ -39,13 +41,14 @@ export class ProofOfWork {
       || !Number.isSafeInteger(p.number) || p.number < 0) return { ok: false, reason: 'malformed' };
     if (!safeEqual(hmac(this.key, `${p.salt}|${p.challenge}`), p.signature)) return { ok: false, reason: 'signature' };
     if (sha256(p.salt + p.number) !== p.challenge) return { ok: false, reason: 'solution' };
-    const m = /\?i=(\d{1,15})&e=(\d{1,15})&m=(\d{1,10})&k=([A-Za-z0-9_-]{0,8})$/.exec(p.salt);
+    const m = /\?i=(\d{1,15})&e=(\d{1,15})&m=(\d{1,10})&f=(\d{1,3})&k=([A-Za-z0-9_-]{0,8})$/.exec(p.salt);
     if (!m) return { ok: false, reason: 'malformed' };
-    const [issued, expires, max] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const [issued, expires, max, factor] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
     if (p.number > max) return { ok: false, reason: 'solution' };
     if (this.now() > expires) return { ok: false, reason: 'expired' };
-    if (m[4] !== String(ipKey).slice(0, 8)) return { ok: false, reason: 'ip' };
-    if (max < minMax) return { ok: false, reason: 'difficulty' };
+    if (m[5] !== String(ipKey).slice(0, 8)) return { ok: false, reason: 'ip' };
+    if (factor < minFactor) return { ok: false, reason: 'factor' };
+    if (max < minMax * minFactor) return { ok: false, reason: 'difficulty' };
     if (this.used.has(p.challenge)) return { ok: false, reason: 'replay' };
     this.used.set(p.challenge, expires);
     return { ok: true, issued };

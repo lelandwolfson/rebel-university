@@ -68,7 +68,7 @@ export class Client {
   get(path) { return this.request('GET', path); }
 
   // Fill a form found on the page at `path` (the first form whose action matches) and submit it.
-  async submit(path, action, fields = {}, { solvePow = true, page = null } = {}) {
+  async submit(path, action, fields = {}, { solvePow = true, page = null, powFor = null } = {}) {
     const p = page || await this.get(path);
     const forms = [...p.text.matchAll(/<form[^>]*action="([^"]*)"[^>]*>([\s\S]*?)<\/form>/g)];
     const f = forms.find((m) => decodeEntities(m[1]) === action);
@@ -77,7 +77,14 @@ export class Client {
     const data = {};
     for (const m of inner.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)) data[m[1]] = decodeEntities(m[2]);
     const ch = /data-challenge="([^"]+)"/.exec(inner);
-    if (ch && solvePow) data.pow = solve(JSON.parse(decodeEntities(ch[1])));
+    const by = /data-challenges="([^"]+)"/.exec(inner);
+    const checked = /<input type="radio" name="radius" value="(\d+)" checked/.exec(inner);
+    const radius = fields.radius ?? (checked && checked[1]);
+    // Like the browser: use the challenge for the chosen distance, unless told to use the base one.
+    if (ch && solvePow) {
+      const pick = by && radius && powFor !== 'base' ? JSON.parse(decodeEntities(by[1]))[powFor || radius] : JSON.parse(decodeEntities(ch[1]));
+      data.pow = solve(pick);
+    }
     Object.assign(data, fields);
     for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
     return this.request('POST', action, data);

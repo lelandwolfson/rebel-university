@@ -5,10 +5,21 @@ import { guard, powScript, workLabel, errorBox, noticeBox, field, formatLabel } 
 import { newToken, hashToken, isTokenShape, signValue, verifyValue, encrypt } from '../security.js';
 import { clean, safeHttpsUrl, emailShape } from '../text.js';
 import { KINDS, bookNormKey, manualNormKey, isOlWorkKey } from '../works.js';
-import { matchesFor, meetingFitsRequest } from '../matching.js';
+import { matchesFor, meetingFitsRequest, RADII_KM, DEFAULT_RADIUS_KM, isRadius, kmToMiles, radiusWorkFactor, acceptsInPerson } from '../matching.js';
 import { sendConfirmation, notifyNewRequest, background } from '../notify.js';
 
 const FORMATS = ['either', 'in_person', 'video'];
+
+function radiusOptions(ctx, selected) {
+  return RADII_KM.map((km) => html`<label class="radio"><input type="radio" name="radius" value="${km}"${km === selected ? ' checked' : ''}> ${ctx.t('radius.option', { km, mi: kmToMiles(km) })}</label>`);
+}
+
+// The travel distance in a submitted form, and the proof-of-work it requires.
+function radiusFromBody(b, inPerson) {
+  const n = Number(b.radius);
+  const radiusKm = inPerson && isRadius(n) ? n : DEFAULT_RADIUS_KM;
+  return { radiusKm, factor: inPerson ? radiusWorkFactor(radiusKm) : 1 };
+}
 
 // A signed reference to a chosen work travels through the URL and forms.
 export function workRef(app, value) { return signValue(app.config.keys.sign, value); }
@@ -77,12 +88,14 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
     const { t, store, places, config } = { ...app, t: ctx.t };
     const b = ctx.body;
     const values = {
-      w: b.w || '', manual: !b.w, placeQ: b.place_q || '', place: b.place || '', format: b.format || 'either',
+      w: b.w || '', manual: !b.w, placeQ: b.place_q || '', place: b.place || '', format: b.format || 'either', radius: Number(b.radius) || DEFAULT_RADIUS_KM,
       email: b.email || '', kind: b.kind || '', title: b.title || '', creator: b.creator || '', link: b.link || '',
     };
     const fail = (msg, status = 400) => detailsPage(ctx, { ...values, error: msg, status });
 
-    const formErr = checkForm(ctx, { pow: true });
+    // Wider distances need proportionally more proof-of-work (THREAT-MODEL.md T1a).
+    const { radiusKm, factor } = radiusFromBody(b, b.place !== 'online' && b.format !== 'video');
+    const formErr = checkForm(ctx, { pow: true, factor });
     if (formErr) return fail(formErr);
     if (!allowWrite(ctx, 'request', 12)) return fail(t('err.rate'), 429);
 
@@ -133,7 +146,7 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
 
     const token = newToken();
     const request = store.createRequest({
-      tokenHash: hashToken(token), workId: work.id, placeId, onlineOnly, format, emailEnc,
+      tokenHash: hashToken(token), workId: work.id, placeId, onlineOnly, format, radiusKm, emailEnc,
       status: work.held ? 'held' : 'open',
     });
     app.recordWrite(ctx.ipKey);
@@ -158,7 +171,9 @@ ${results ? (results.length ? html`<ul class="results">${results.map((r) => html
       : [];
     const area = r.onlineOnly ? t('place.online') : places.label(r.placeId) || '';
     const expires = new Date(r.expiresHour * 3600 * 1000).toISOString().slice(0, 10);
-    const notice = ctx.query.get('new') ? t('manage.saveLink') : ctx.query.get('email') === 'removed' ? t('manage.email.removed') : null;
+    const notice = ctx.query.get('new') ? t('manage.saveLink') : ctx.query.get('email') === 'removed' ? t('manage.email.removed')
+      : ctx.query.get('radius') === 'changed' ? t('manage.radius.changed') : null;
+    const inPerson = acceptsInPerson(r);
 
     page(ctx, {
       title: t('manage.title'),
@@ -168,6 +183,7 @@ ${noticeBox(notice)}
 <section class="card">
   <p class="work">${workLabel(ctx, work)}</p>
   <p>${area} · ${formatLabel(ctx, r.format)}</p>
+  ${inPerson ? html`<p>${t('manage.radius', { km: r.radiusKm, mi: kmToMiles(r.radiusKm) })}</p>` : ''}
   <p class="hint">${t('manage.expires', { date: expires })}</p>
 </section>
 ${r.status === 'held' ? html`<p class="notice">${t('manage.held')}</p>` : html`
@@ -177,6 +193,13 @@ ${r.status === 'held' ? html`<p class="notice">${t('manage.held')}</p>` : html`
   ${meetings.length ? html`<ul class="meetings">${meetings.map((m) => html`<li><a href="/m/${m.id}">${meetingLine(ctx, m)}</a></li>`)}</ul>` : html`<p>${t('manage.meetings.none')}</p>`}
   <p><a class="button" href="/r/${token}/meet">${t('manage.start')}</a></p>
 </section>`}
+${inPerson && r.status === 'open' ? html`<details class="quiet"><summary>${t('manage.radius.change')}</summary>
+<form method="post" action="/r/${token}/radius" data-pow>
+  <fieldset><legend>${t('request.radius')}</legend>${radiusOptions(ctx, r.radiusKm)}<p class="hint">${t('request.radius.hint')}</p></fieldset>
+  ${guard(ctx, { pow: true, powBy: 'radius' })}
+  <button type="submit">${t('manage.radius.change')}</button>
+  <p class="pow-status" aria-live="polite"></p>
+</form></details>${powScript()}` : ''}
 <section class="quiet">
   ${r.emailEnc ? html`<form method="post" action="/r/${token}/email">${guard(ctx)}<p>${t('manage.email.set')} <button class="link" type="submit">${t('manage.email.remove')}</button></p></form>` : ''}
   <form method="post" action="/r/${token}/close">${guard(ctx)}<button class="secondary" type="submit">${t('manage.close')}</button></form>
@@ -190,6 +213,24 @@ ${r.status === 'held' ? html`<p class="notice">${t('manage.held')}</p>` : html`
     if (checkForm(ctx)) throw new HttpError(400, 'err.form');
     app.store.deleteRequest(r.id);
     page(ctx, { title: ctx.t('manage.closed'), noindex: true, body: html`<h1>${ctx.t('manage.closed')}</h1><p><a href="/request/new">Post another request</a></p>` });
+  });
+
+  // Changing the distance shows a fresh match count, so it is treated like a new
+  // probe: proof-of-work at the new distance, the per-work budget, and a per-request cap.
+  router.post('/r/:token/radius', async (ctx) => {
+    const r = await loadRequest(ctx);
+    if (r.status !== 'open' || !acceptsInPerson(r)) throw new HttpError(400);
+    const n = Number(ctx.body.radius);
+    if (!isRadius(n)) throw new HttpError(400, 'err.form');
+    if (checkForm(ctx, { pow: true, factor: radiusWorkFactor(n) })) throw new HttpError(400, 'err.form');
+    if (n === r.radiusKm) return redirect(ctx, `/r/${ctx.params.token}`);
+    if (!app.limiter.hit('radius-change', r.id, 3, 24 * 3600 * 1000)
+      || !app.limiter.hit('work-per-ip', `${ctx.ipKey}|${r.workId}`, 3, 24 * 3600 * 1000)) throw new HttpError(429);
+    app.store.setRequestRadius(r.id, n);
+    app.recordWrite(ctx.ipKey);
+    const updated = app.store.getRequest(r.id);
+    background(app, notifyNewRequest(app, updated, app.store.getWork(r.workId)));
+    redirect(ctx, `/r/${ctx.params.token}?radius=changed`);
   });
 
   router.post('/r/:token/email', async (ctx) => {
@@ -262,9 +303,15 @@ ${ref ? html`<section class="card"><h2>${t('request.work.chosen')}</h2><p class=
     <p class="hint">If you chose online only, the meeting will be on video.</p>
   </fieldset>
 
+  <fieldset>
+    <legend>${t('request.radius')}</legend>
+    ${radiusOptions(ctx, isRadius(Number(v.radius)) ? Number(v.radius) : DEFAULT_RADIUS_KM)}
+    <p class="hint">${t('request.radius.hint')}</p>
+  </fieldset>
+
   ${field(t('request.email.label'), html`<input type="email" name="email" value="${v.email || ''}" maxlength="254" autocomplete="email">`, t('request.email.hint'))}
   <p class="adults">${t('request.adults')}</p>
-  ${guard(ctx, { pow: true })}
+  ${guard(ctx, { pow: true, powBy: 'radius' })}
   <button type="submit">${t('request.submit')}</button>
   <p class="pow-status" aria-live="polite"></p>
 </form>

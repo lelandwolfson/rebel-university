@@ -404,3 +404,76 @@ test('review finding 1: login spam from one address does not lock out the admin 
     assert.equal(r.status, 303);
   } finally { await t.close(); }
 });
+
+// ---- chosen travel distance
+test('distance: chosen when posting, shown only on the private page, and both limits apply', async () => {
+  const t = await startTestServer();
+  try {
+    const SALEM = '5750162'; // ~70 km from Portland, OR
+    const post = async (placeQ, place, radius) => {
+      const c = new Client(t.base);
+      const r = await c.submit(`/request/new/details?manual=1&place_q=${placeQ}`, '/request', {
+        kind: 'book', title: 'Silent Spring', creator: 'Rachel Carson', place, format: 'in_person', radius,
+      });
+      assert.equal(r.status, 303, r.text.slice(0, 1500));
+      return { c, token: /^\/r\/([A-Za-z0-9_-]{43})/.exec(r.location)[1] };
+    };
+    const a = await post('portland', PORTLAND, '100');
+    const pageA = await a.c.get(`/r/${a.token}`);
+    assert.match(pageA.text, /You will travel up to 100 km \(62 mi\)/);
+    assert.match(pageA.text, /value="100" checked/);
+
+    const b = await post('salem', SALEM, '50'); // 70 km apart, b only travels 50
+    assert.match((await a.c.get(`/r/${a.token}`)).text, /Nobody else has asked/);
+    assert.match((await b.c.get(`/r/${b.token}`)).text, /Nobody else has asked/);
+
+    // b widens to 100: now within both limits.
+    const ch = await b.c.submit(`/r/${b.token}`, `/r/${b.token}/radius`, { radius: '100' });
+    assert.equal(ch.status, 303);
+    assert.match(ch.location, /radius=changed/);
+    assert.match((await b.c.get(`/r/${b.token}`)).text, /1 other person/);
+    assert.match((await a.c.get(`/r/${a.token}`)).text, /1 other person/);
+
+    // Never public.
+    const anon = new Client(t.base);
+    for (const p of ['/board', '/meetings', '/']) assert.doesNotMatch((await anon.get(p)).text, /\d+ km|\d+ mi\)/, p);
+    assert.equal(t.store.db.prepare('SELECT radius_km FROM requests WHERE radius_km = 100').all().length, 2);
+  } finally { await t.close(); }
+});
+
+test('distance: a wide request needs the matching proof-of-work', async () => {
+  const t = await startTestServer();
+  try {
+    const c = new Client(t.base);
+    const form = '/request/new/details?manual=1&place_q=portland';
+    const fields = { kind: 'film', title: 'Koyaanisqatsi', creator: 'Godfrey Reggio', place: PORTLAND, format: 'in_person', radius: '200' };
+    const cheap = await c.submit(form, '/request', fields, { powFor: 'base' });
+    assert.equal(cheap.status, 400, 'base challenge refused for 200 km');
+    const mid = await c.submit(form, '/request', fields, { powFor: '100' });
+    assert.equal(mid.status, 400, '100 km challenge refused for 200 km');
+    const ok = await c.submit(form, '/request', fields);
+    assert.equal(ok.status, 303);
+    // A video-only request needs no extra work whatever radius is sent.
+    const v = await c.submit('/request/new/details?manual=1', '/request', { ...fields, title: 'Baraka', place: 'online', format: 'video' }, { powFor: 'base' });
+    assert.equal(v.status, 303);
+    assert.equal(t.store.db.prepare("SELECT radius_km FROM requests WHERE format = 'video'").get().radius_km, 50, 'distance ignored for video');
+  } finally { await t.close(); }
+});
+
+test('distance: changes are limited and need proof-of-work for the new distance', async () => {
+  const t = await startTestServer();
+  try {
+    const c = new Client(t.base);
+    const r = await c.submit('/request/new/details?manual=1&place_q=portland', '/request', {
+      kind: 'book', title: 'Braiding Sweetgrass', creator: 'Robin Wall Kimmerer', place: PORTLAND, format: 'either', radius: '25',
+    });
+    const token = /^\/r\/([A-Za-z0-9_-]{43})/.exec(r.location)[1];
+    const path = `/r/${token}`;
+    assert.equal((await c.submit(path, `${path}/radius`, { radius: '200' }, { powFor: 'base' })).status, 400, 'cheap challenge refused');
+    assert.equal((await c.request('POST', `${path}/radius`, { radius: '75' })).status, 400, 'only listed distances');
+    const seq = [];
+    for (const km of ['200', '100', '50', '25']) seq.push((await c.submit(path, `${path}/radius`, { radius: km })).status);
+    assert.deepEqual(seq.slice(0, 2), [303, 303]);
+    assert.ok(seq.includes(429), `limited: ${seq}`);
+  } finally { await t.close(); }
+});

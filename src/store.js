@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS requests (
   place_id INTEGER,
   online_only INTEGER NOT NULL DEFAULT 0,
   format TEXT NOT NULL CHECK (format IN ('in_person','video','either')),
+  radius_km INTEGER NOT NULL DEFAULT 50 CHECK (radius_km IN (25,50,100,200)),
   email_enc TEXT,
   status TEXT NOT NULL CHECK (status IN ('open','held')),
   last_notified_hour INTEGER NOT NULL DEFAULT 0,
@@ -79,7 +80,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 `;
 
 const toRequest = (r) => r && ({
-  id: r.id, workId: r.work_id, placeId: r.place_id, onlineOnly: !!r.online_only, format: r.format,
+  id: r.id, workId: r.work_id, placeId: r.place_id, onlineOnly: !!r.online_only, format: r.format, radiusKm: r.radius_km,
   emailEnc: r.email_enc, status: r.status, lastNotifiedHour: r.last_notified_hour,
   createdHour: r.created_hour, expiresHour: r.expires_hour,
 });
@@ -100,8 +101,17 @@ export class Store {
     this.now = now;
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA secure_delete = ON;');
     this.db.exec(SCHEMA);
+    this.migrate();
     this.q = new Map();
     this.version = 0; // bumps whenever open requests change (board cache)
+  }
+
+  // Additive migrations for databases created by older versions.
+  migrate() {
+    const cols = this.db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
+    if (!cols.includes('radius_km')) {
+      this.db.exec('ALTER TABLE requests ADD COLUMN radius_km INTEGER NOT NULL DEFAULT 50 CHECK (radius_km IN (25,50,100,200))');
+    }
   }
 
   sql(s) {
@@ -157,12 +167,12 @@ export class Store {
   deleteWork(id) { this.version++; return this.sql('DELETE FROM works WHERE id = ?').run(id).changes; }
 
   // ---- requests
-  createRequest({ tokenHash, workId, placeId, onlineOnly, format, emailEnc, status }) {
+  createRequest({ tokenHash, workId, placeId, onlineOnly, format, radiusKm = 50, emailEnc, status }) {
     const h = this.hour();
     const id = rid();
     this.version++;
-    this.sql(`INSERT INTO requests (id, token_hash, work_id, place_id, online_only, format, email_enc, status, created_hour, expires_hour)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, tokenHash, workId, placeId ?? null, onlineOnly ? 1 : 0, format, emailEnc ?? null, status, h, h + 90 * 24);
+    this.sql(`INSERT INTO requests (id, token_hash, work_id, place_id, online_only, format, radius_km, email_enc, status, created_hour, expires_hour)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, tokenHash, workId, placeId ?? null, onlineOnly ? 1 : 0, format, radiusKm, emailEnc ?? null, status, h, h + 90 * 24);
     return this.getRequest(id);
   }
   getRequest(id) { return toRequest(this.sql('SELECT * FROM requests WHERE id = ?').get(id)); }
@@ -172,6 +182,10 @@ export class Store {
   }
   openRequests() { return this.sql("SELECT * FROM requests WHERE status = 'open'").all().map(toRequest); }
   deleteRequest(id) { this.version++; return this.sql('DELETE FROM requests WHERE id = ?').run(id).changes; }
+  setRequestRadius(id, radiusKm) {
+    this.version++;
+    this.sql('UPDATE requests SET radius_km = ? WHERE id = ?').run(radiusKm, id);
+  }
   clearRequestEmail(id) { this.sql('UPDATE requests SET email_enc = NULL WHERE id = ?').run(id); }
   markNotified(id) { this.sql('UPDATE requests SET last_notified_hour = ? WHERE id = ?').run(this.hour(), id); }
   recentRequests(limit = 200) {

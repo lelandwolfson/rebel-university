@@ -1,39 +1,53 @@
 // Matching rules. Pure functions so they are easy to test.
 //
-// The only basis for a match is the work. Place and format only decide
-// whether a meeting is physically possible.
+// The only basis for a match is the work. Place, format, and travel distance
+// only decide whether a meeting is physically possible.
 
-export const RADIUS_KM = 50;
+// How far a person will travel to meet in person. Kilometres; miles shown alongside.
+export const RADII_KM = [25, 50, 100, 200];
+export const DEFAULT_RADIUS_KM = 50;
+export const RADIUS_KM = DEFAULT_RADIUS_KM; // kept for older callers
+
+export const isRadius = (r) => RADII_KM.includes(r);
+export const radiusOf = (r) => (isRadius(r.radiusKm) ? r.radiusKm : DEFAULT_RADIUS_KM);
+export const kmToMiles = (km) => Math.round(km * 0.621371);
+
+// Proof-of-work multiplier: proportional to the area a probe could cover (THREAT-MODEL.md T1a).
+export const radiusWorkFactor = (km) => Math.max(1, Math.round((km / DEFAULT_RADIUS_KM) ** 2));
 
 export const acceptsVideo = (r) => r.format === 'video' || r.format === 'either';
 export const acceptsInPerson = (r) => !r.onlineOnly && r.placeId != null && (r.format === 'in_person' || r.format === 'either');
 
-// a, b: { id, workId, placeId, onlineOnly, format }
-export function compatible(a, b, distanceKm, radius = RADIUS_KM) {
+// In person, two people can meet only if each is willing to travel that far.
+export const withinBoth = (a, b, distanceKm) => distanceKm(a.placeId, b.placeId) <= Math.min(radiusOf(a), radiusOf(b));
+
+// a, b: { id, workId, placeId, onlineOnly, format, radiusKm }
+export function compatible(a, b, distanceKm) {
   if (a.workId !== b.workId || a.id === b.id) return false;
   if (acceptsVideo(a) && acceptsVideo(b)) return true;
-  if (acceptsInPerson(a) && acceptsInPerson(b)) return distanceKm(a.placeId, b.placeId) <= radius;
+  if (acceptsInPerson(a) && acceptsInPerson(b)) return withinBoth(a, b, distanceKm);
   return false;
 }
 
-export function matchesFor(request, others, distanceKm, radius = RADIUS_KM) {
-  return others.filter((o) => compatible(request, o, distanceKm, radius));
+export function matchesFor(request, others, distanceKm) {
+  return others.filter((o) => compatible(request, o, distanceKm));
 }
 
 // meeting: { workId, placeId, format: in_person|video|both }
-export function meetingFitsRequest(request, meeting, distanceKm, radius = RADIUS_KM) {
+// The meeting is in its organizer's city; it fits if that is within the reader's own limit.
+export function meetingFitsRequest(request, meeting, distanceKm) {
   if (request.workId !== meeting.workId) return false;
   const hasVideo = meeting.format === 'video' || meeting.format === 'both';
   const hasInPerson = meeting.format === 'in_person' || meeting.format === 'both';
   if (hasVideo && acceptsVideo(request)) return true;
   if (hasInPerson && acceptsInPerson(request) && meeting.placeId != null) {
-    return distanceKm(request.placeId, meeting.placeId) <= radius;
+    return distanceKm(request.placeId, meeting.placeId) <= radiusOf(request);
   }
   return false;
 }
 
 // Requests in the list that have no compatible partner (for the open board).
-export function unmatched(requests, distanceKm, radius = RADIUS_KM) {
+export function unmatched(requests, distanceKm) {
   const byWork = new Map();
   for (const r of requests) {
     if (!byWork.has(r.workId)) byWork.set(r.workId, []);
@@ -47,7 +61,7 @@ export function unmatched(requests, distanceKm, radius = RADIUS_KM) {
     const inPerson = group.filter(acceptsInPerson);
     for (const r of group) {
       if (videoMatched && acceptsVideo(r)) continue;
-      if (acceptsInPerson(r) && inPerson.some((o) => o.id !== r.id && distanceKm(r.placeId, o.placeId) <= radius)) continue;
+      if (acceptsInPerson(r) && inPerson.some((o) => o.id !== r.id && withinBoth(r, o, distanceKm))) continue;
       out.push(r);
     }
   }

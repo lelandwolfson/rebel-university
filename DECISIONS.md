@@ -8,7 +8,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 
 **D-03. One request per private link.** The prompt mentions "a cap on open requests per private link". Holding several requests under one link would build a reading list tied to one person, which conflicts with core rule 5. Each request gets its own link, so the cap is one by construction. A person can post as many requests as they like, each separately (subject to IP rate limits).
 
-**D-04. In-person radius is a fixed 50 km.** A fixed radius keeps the form short and matches "nearby". It roughly covers a metro area. Could become a choice later.
+**D-04. In-person travel distance is the person's choice: 25, 50, 100, or 200 km (miles shown alongside), default 50.** *(Revised; v1 used a fixed 50 km, too tight for rural areas.)* Two requests match in person only within both people's limits. A meeting fits a request when it is within that reader's limit. The distance is shown only on the request's private page, where it can be changed. Four fixed steps keep the form short and make probing costs predictable (THREAT-MODEL.md T1a).
 
 **D-05. "Online only" requires video.** If a person gives no place, the only meeting they can have is on video.
 
@@ -60,3 +60,7 @@ Choices made while building, with the reason. Departures from Illich are marked 
 **D-27. Random row ids.** Sequential ids would reveal posting order and totals, undoing the hour-rounding of timestamps.
 
 **D-28. www redirects to the bare domain** in production.
+
+**D-29. Wider distances cost more proof-of-work, and a distance change counts as a new probe.** A 200 km request needs 16 times the base work, and 100 km needs 4 times (proportional to area). Changing the distance needs proof-of-work for the new distance. It counts against the 3-per-work-per-connection daily budget and is capped at 3 changes per request per day. This keeps probing at least as costly as with a fixed 50 km (THREAT-MODEL.md T1a). The cost to a rural reader is a few extra seconds, once.
+
+**D-30. Video-only and online-only requests store the default distance.** The distance only matters in person, so a sent value is ignored and costs no extra work.

@@ -17,7 +17,7 @@ Why: the smallest thing one person can maintain. No framework to upgrade, almost
 works       id, kind (book|article|film|recording), ol_key (books), title, creator,
             link (manual only, never public), norm_key (unique), held (0/1), created_hour
 requests    id, token_hash, work_id, place_id (GeoNames id or NULL), online_only,
-            format (in_person|video|either), email_enc (nullable),
+            format (in_person|video|either), radius_km (25|50|100|200), email_enc (nullable),
             status (open|held|closed), last_notified_hour, created_hour, expires_hour
 meetings    id (random public id), work_id, place_id, format (in_person|video|both),
             starts_utc, tz, venue, video_url, note, status (open|closed|cancelled),
@@ -55,7 +55,7 @@ Admin
 
 Two open requests for the same work match when:
 - both accept video, or
-- both accept in person, both name a city, and the cities are within 50 km.
+- both accept in person, both name a city, and the cities are within both people's chosen travel distance (25, 50, 100, or 200 km).
 
 ## Jobs (hourly, in process)
 

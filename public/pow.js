@@ -79,24 +79,56 @@
     setTimeout(chunk, 0); // never block page load
   }
 
+  // A form may carry one challenge, or one per value of another field
+  // (data-challenge-by="radius"): wider travel distances need more work.
   function setup(form) {
     var input = form.querySelector('input[name="pow"][data-challenge]');
     if (!input) return;
     var status = form.querySelector('.pow-status');
-    var ch;
-    try { ch = JSON.parse(input.getAttribute('data-challenge')); } catch (e) { return; }
-    var solved = false, waiting = false;
-    solve(ch, function (number) {
-      if (number === null) { if (status) status.textContent = 'The anti-spam check failed. Please reload the page.'; return; }
-      input.value = btoa(JSON.stringify({ algorithm: ch.algorithm, challenge: ch.challenge, number: number, salt: ch.salt, signature: ch.signature }));
-      solved = true;
-      if (waiting) { if (status) status.textContent = 'Sending…'; form.submit(); }
-    });
+    var byField = input.getAttribute('data-challenge-by');
+    var base, byValue = null;
+    try {
+      base = JSON.parse(input.getAttribute('data-challenge'));
+      if (byField) byValue = JSON.parse(input.getAttribute('data-challenges'));
+    } catch (e) { return; }
+    var results = {}; // challenge string -> encoded solution, or false while running
+    var waiting = false;
+
+    function current() {
+      if (!byValue) return base;
+      var el = form.querySelector('[name="' + byField + '"]:checked') || form.querySelector('select[name="' + byField + '"]');
+      return (el && byValue[el.value]) || base;
+    }
+    function encoded(ch) { return results[ch.challenge] || null; }
+    function start(ch) {
+      if (ch.challenge in results) return;
+      results[ch.challenge] = false;
+      solve(ch, function (number) {
+        if (number === null) { if (status) status.textContent = 'The anti-spam check failed. Please reload the page.'; return; }
+        results[ch.challenge] = btoa(JSON.stringify({ algorithm: ch.algorithm, challenge: ch.challenge, number: number, salt: ch.salt, signature: ch.signature }));
+        if (waiting && current().challenge === ch.challenge) {
+          input.value = results[ch.challenge];
+          if (status) status.textContent = 'Sending…';
+          form.submit();
+        }
+      });
+    }
+    start(current());
+    if (byValue) {
+      form.addEventListener('change', function (ev) {
+        if (ev.target && ev.target.name === byField) start(current());
+      });
+    }
     form.addEventListener('submit', function (ev) {
-      if (solved) return;
+      var ch = current();
+      var done = encoded(ch);
+      if (done) { input.value = done; return; }
       ev.preventDefault();
       waiting = true;
-      if (status) status.textContent = 'Running a short anti-spam check…';
+      start(ch);
+      if (status) status.textContent = ch.maxnumber > base.maxnumber
+        ? 'Running a longer anti-spam check for a wider distance. This can take a few seconds…'
+        : 'Running a short anti-spam check…';
     });
   }
 

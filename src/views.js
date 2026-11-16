@@ -1,4 +1,5 @@
 import { html, raw } from './html.js';
+import { RADII_KM, radiusWorkFactor } from './matching.js';
 
 // Shared layout and small components.
 
@@ -57,12 +58,26 @@ export function noticeBox(msg) {
 }
 
 // Hidden fields every form carries.
-export function guard(ctx, { pow = false } = {}) {
+// powBy: name of a form field (the travel distance) whose value scales the work.
+// One challenge per distinct factor is embedded; the browser solves the one that applies.
+export function guard(ctx, { pow = false, powBy = null } = {}) {
   const parts = [html`<input type="hidden" name="_csrf" value="${ctx.csrf}">`];
   if (pow) {
-    const challenge = ctx.app.pow.create(ctx.app.powDifficulty(ctx.ipKey), ctx.ipKey);
+    const base = ctx.app.powDifficulty(ctx.ipKey);
+    const challenge = ctx.app.pow.create(base, ctx.ipKey, 1);
+    let byAttrs = '';
+    if (powBy) {
+      const byFactor = new Map([[1, challenge]]);
+      const map = {};
+      for (const km of RADII_KM) {
+        const f = radiusWorkFactor(km);
+        if (!byFactor.has(f)) byFactor.set(f, ctx.app.pow.create(base * f, ctx.ipKey, f));
+        map[km] = byFactor.get(f);
+      }
+      byAttrs = html` data-challenge-by="${powBy}" data-challenges="${JSON.stringify(map)}"`;
+    }
     parts.push(html`<div class="hp" aria-hidden="true"><label>Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
-<input type="hidden" name="pow" value="" data-challenge="${JSON.stringify(challenge)}">
+<input type="hidden" name="pow" value="" data-challenge="${JSON.stringify(challenge)}"${byAttrs}>
 <noscript><p class="error">${ctx.t('pow.noscript')}</p></noscript>`);
   }
   return parts;
