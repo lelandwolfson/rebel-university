@@ -12,6 +12,7 @@ import {
 import { layout } from './views.js';
 import { html } from './html.js';
 import pages from './routes/pages.js';
+import { lastBackupAt } from './jobs.js';
 import requests from './routes/requests.js';
 import meetings from './routes/meetings.js';
 import listings from './routes/listings.js';
@@ -36,6 +37,7 @@ export function createApp(config, { store, places, mailer, openLibrary, now = ()
     joinedFrom: new Map(), // attendee id -> { ipKey, until }; memory only
   };
   app.distanceKm = (a, b) => app.places.distanceKm(a, b);
+  app.lastBackupAt = () => lastBackupAt(app);
   app.powDifficulty = (ipKey, ipKey48) => powDifficulty(app.limiter, ipKey, config.powBase, ipKey48);
   app.recordWrite = (ipKey, ipKey48) => recordWrite(app.limiter, ipKey, ipKey48);
 

@@ -12,6 +12,8 @@ export function loadConfig(env = process.env, overrides = {}) {
     appSecret = DEV_SECRET;
   }
   const adminSecret = (env.ADMIN_SECRET || '').length >= 32 ? env.ADMIN_SECRET : null;
+  // Read-only access to /admin/digest.json, and nothing else.
+  const digestToken = (env.DIGEST_TOKEN || '').length >= 32 ? env.DIGEST_TOKEN : null;
   const baseUrl = (env.BASE_URL || (production ? 'https://rebeluniversity.org' : `http://localhost:${env.PORT || 3000}`)).replace(/\/+$/, '');
   const dataDir = env.DATA_DIR || path.resolve('var');
 
@@ -37,6 +39,10 @@ export function loadConfig(env = process.env, overrides = {}) {
     backupDir: env.BACKUP_DIR || path.join(dataDir, 'backups'),
     backupKeep: Number(env.BACKUP_KEEP || 7),
     adminSecret,
+    digestToken,
+    // AI moderation runs only when this is set; the site works without it.
+    anthropicApiKey: env.ANTHROPIC_API_KEY || null,
+    aiModel: env.AI_MODEL || 'claude-haiku-5-5',
     keys: {
       email: Buffer.from(key('email-encryption-v1')),
       sign: Buffer.from(key('signing-v1')),

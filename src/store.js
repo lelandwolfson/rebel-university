@@ -10,6 +10,7 @@ const rid = () => crypto.randomInt(1, 2 ** 47);
 
 export const HOUR = 3600 * 1000;
 export const toHour = (ms) => Math.floor(ms / HOUR);
+export const TRASH_HOURS = 7 * 24;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS works (
@@ -75,7 +76,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY,
   at_hour INTEGER NOT NULL,
   action TEXT NOT NULL,
-  target TEXT NOT NULL DEFAULT ''
+  target TEXT NOT NULL DEFAULT '',
+  actor TEXT NOT NULL DEFAULT 'admin',
+  reason TEXT NOT NULL DEFAULT ''
+);
+-- One row per AI moderation run: what it saw, did, and flagged (plain JSON).
+CREATE TABLE IF NOT EXISTS moderation_runs (
+  id INTEGER PRIMARY KEY,
+  at_ms INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('ok','flagged','skipped','error')),
+  summary TEXT NOT NULL,
+  acked INTEGER NOT NULL DEFAULT 0
+);
+-- Removed items, kept TRASH_HOURS so the admin can restore them, then purged.
+CREATE TABLE IF NOT EXISTS trash (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('request','meeting','work')),
+  ref TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  payload TEXT NOT NULL,
+  removed_hour INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT ''
 );
 `;
 
@@ -111,6 +133,14 @@ export class Store {
     const cols = this.db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
     if (!cols.includes('radius_km')) {
       this.db.exec('ALTER TABLE requests ADD COLUMN radius_km INTEGER NOT NULL DEFAULT 50 CHECK (radius_km IN (25,50,100,200))');
+    }
+    const auditCols = this.db.prepare('PRAGMA table_info(audit_log)').all().map((c) => c.name);
+    if (!auditCols.includes('actor')) this.db.exec("ALTER TABLE audit_log ADD COLUMN actor TEXT NOT NULL DEFAULT 'admin'");
+    if (!auditCols.includes('reason')) this.db.exec("ALTER TABLE audit_log ADD COLUMN reason TEXT NOT NULL DEFAULT ''");
+    // Marks an item as already seen by AI moderation, so it isn't sent again.
+    for (const table of ['reports', 'works']) {
+      const c = this.db.prepare(`PRAGMA table_info(${table})`).all().map((x) => x.name);
+      if (!c.includes('ai_reviewed_hour')) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ai_reviewed_hour INTEGER`);
     }
   }
 
@@ -270,10 +300,143 @@ export class Store {
   reportCountForMeeting(meetingId) { return this.sql('SELECT COUNT(*) AS n FROM reports WHERE meeting_id = ?').get(meetingId).n; }
 
   // ---- audit
-  audit(action, target = '') {
-    this.sql('INSERT INTO audit_log (at_hour, action, target) VALUES (?, ?, ?)').run(this.hour(), action, String(target).slice(0, 200));
+  audit(action, target = '', { actor = 'admin', reason = '' } = {}) {
+    this.sql('INSERT INTO audit_log (at_hour, action, target, actor, reason) VALUES (?, ?, ?, ?, ?)')
+      .run(this.hour(), action, String(target).slice(0, 200), actor, String(reason).slice(0, 300));
   }
   auditLog(limit = 100) { return this.sql('SELECT * FROM audit_log ORDER BY at_hour DESC, id DESC LIMIT ?').all(limit); }
+
+  // ---- soft delete: trash
+  //
+  // A removed request, meeting, or work moves here with its dependent rows, as
+  // JSON, for TRASH_HOURS. Live tables never hold removed rows, so no other
+  // query needs to know about removal.
+
+  rowsOf(table, where, ...args) { return this.db.prepare(`SELECT * FROM ${table} WHERE ${where}`).all(...args); }
+
+  insertRow(table, row) {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name).filter((c) => c in row);
+    this.db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((c) => row[c]));
+  }
+
+  toTrash(kind, ref, label, payload, actor, reason) {
+    return Number(this.sql('INSERT INTO trash (kind, ref, label, payload, removed_hour, actor, reason) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(kind, String(ref), String(label).slice(0, 300), JSON.stringify(payload), this.hour(), actor, String(reason).slice(0, 300)).lastInsertRowid);
+  }
+
+  // Each returns the trash id if something was removed, or null.
+  trashRequest(id, { actor, reason }) {
+    const done = this.tx(() => {
+      const row = this.sql('SELECT * FROM requests WHERE id = ?').get(id);
+      if (!row) return null;
+      const w = this.sql('SELECT title FROM works WHERE id = ?').get(row.work_id);
+      const t = this.toTrash('request', id, w ? w.title : '', { requests: [row] }, actor, reason);
+      this.sql('DELETE FROM requests WHERE id = ?').run(id);
+      return t;
+    });
+    if (done) { this.version++; this.scrub(); }
+    return done;
+  }
+
+  trashMeeting(id, { actor, reason }) {
+    const done = this.tx(() => {
+      const row = this.sql('SELECT * FROM meetings WHERE id = ?').get(String(id));
+      if (!row) return null;
+      const w = this.sql('SELECT title FROM works WHERE id = ?').get(row.work_id);
+      const t = this.toTrash('meeting', id, w ? w.title : '', {
+        meetings: [row], attendees: this.rowsOf('attendees', 'meeting_id = ?', row.id), reports: this.rowsOf('reports', 'meeting_id = ?', row.id),
+      }, actor, reason);
+      this.sql('DELETE FROM meetings WHERE id = ?').run(row.id);
+      return t;
+    });
+    if (done) this.scrub();
+    return done;
+  }
+
+  trashWork(id, { actor, reason }) {
+    const done = this.tx(() => {
+      const row = this.sql('SELECT * FROM works WHERE id = ?').get(id);
+      if (!row) return null;
+      const meetings = this.rowsOf('meetings', 'work_id = ?', id);
+      const mids = meetings.map((m) => m.id);
+      const t = this.toTrash('work', id, row.title, {
+        works: [row],
+        requests: this.rowsOf('requests', 'work_id = ?', id),
+        meetings,
+        attendees: mids.flatMap((m) => this.rowsOf('attendees', 'meeting_id = ?', m)),
+        reports: mids.flatMap((m) => this.rowsOf('reports', 'meeting_id = ?', m)),
+      }, actor, reason);
+      this.sql('DELETE FROM works WHERE id = ?').run(id);
+      return t;
+    });
+    if (done) { this.version++; this.scrub(); }
+    return done;
+  }
+
+  trashList(limit = 200) {
+    return this.sql('SELECT id, kind, ref, label, removed_hour, actor, reason FROM trash ORDER BY removed_hour DESC, id DESC LIMIT ?').all(limit);
+  }
+
+  // Put everything back. Fails cleanly (returns an error string) if the parent is gone.
+  restoreTrash(trashId) {
+    const t = this.sql('SELECT * FROM trash WHERE id = ?').get(trashId);
+    if (!t) return 'not found';
+    const p = JSON.parse(t.payload);
+    try {
+      this.tx(() => {
+        for (const table of ['works', 'requests', 'meetings', 'attendees', 'reports']) {
+          for (const row of p[table] || []) this.insertRow(table, row);
+        }
+        this.sql('DELETE FROM trash WHERE id = ?').run(trashId);
+      });
+    } catch (e) {
+      return /FOREIGN KEY/.test(e.message) ? 'the work it belonged to no longer exists' : /UNIQUE/.test(e.message) ? 'it already exists' : 'could not restore';
+    }
+    this.version++;
+    return null;
+  }
+
+  // ---- AI moderation queue (only the fields the model needs)
+  heldWorksForReview(limit) {
+    return this.sql(`SELECT id, kind, title, creator, link FROM works WHERE held = 1 AND ai_reviewed_hour IS NULL
+      ORDER BY created_hour LIMIT ?`).all(limit);
+  }
+  reportsForReview(limit) {
+    return this.sql(`SELECT r.id, r.reason, r.text, r.meeting_id, m.format, m.note, w.title, w.creator, w.kind,
+        (SELECT COUNT(*) FROM reports x WHERE x.meeting_id = r.meeting_id) AS reports_on_meeting
+      FROM reports r JOIN meetings m ON m.id = r.meeting_id JOIN works w ON w.id = m.work_id
+      WHERE r.ai_reviewed_hour IS NULL ORDER BY r.created_hour LIMIT ?`).all(limit);
+  }
+  markReviewed(table, ids) {
+    if (!['reports', 'works'].includes(table)) throw new Error('bad table');
+    const st = this.db.prepare(`UPDATE ${table} SET ai_reviewed_hour = ? WHERE id = ?`);
+    for (const id of ids) st.run(this.hour(), id);
+  }
+
+  // ---- AI moderation runs
+  addRun(status, summary) {
+    const r = this.sql('INSERT INTO moderation_runs (at_ms, status, summary) VALUES (?, ?, ?)').run(this.now(), status, JSON.stringify(summary));
+    this.sql('DELETE FROM moderation_runs WHERE id NOT IN (SELECT id FROM moderation_runs ORDER BY at_ms DESC LIMIT 60)').run();
+    return Number(r.lastInsertRowid);
+  }
+  runs(limit = 10) {
+    return this.sql('SELECT * FROM moderation_runs ORDER BY at_ms DESC, id DESC LIMIT ?').all(limit)
+      .map((r) => ({ id: r.id, atMs: r.at_ms, status: r.status, acked: !!r.acked, summary: JSON.parse(r.summary) }));
+  }
+  lastRunAt(statuses = ['ok', 'flagged', 'error']) {
+    const r = this.db.prepare(`SELECT MAX(at_ms) AS t FROM moderation_runs WHERE status IN (${statuses.map(() => '?').join(',')})`).get(...statuses);
+    return r && r.t ? r.t : 0;
+  }
+  ackRuns() { this.sql('UPDATE moderation_runs SET acked = 1 WHERE acked = 0').run(); }
+  // Items flagged for the owner in runs the owner hasn't looked at yet.
+  waitingForOwner() {
+    let n = 0;
+    for (const r of this.sql("SELECT status, summary FROM moderation_runs WHERE acked = 0").all()) {
+      const s = JSON.parse(r.summary);
+      n += (s.flagged || []).length + (r.status === 'flagged' || r.status === 'error' ? 1 : 0);
+    }
+    return n;
+  }
 
   // ---- bulk removal (admin)
   deleteRequestsSince(hours) {
@@ -294,6 +457,7 @@ export class Store {
       works: this.sql(`DELETE FROM works WHERE NOT EXISTS (SELECT 1 FROM requests r WHERE r.work_id = works.id)
         AND NOT EXISTS (SELECT 1 FROM meetings m WHERE m.work_id = works.id) AND created_hour < ?`).run(h - 1).changes,
       audit: this.sql('DELETE FROM audit_log WHERE at_hour < ?').run(h - 180 * 24).changes,
+      trash: this.sql('DELETE FROM trash WHERE removed_hour <= ?').run(h - TRASH_HOURS).changes,
     }));
     this.scrub();
     return r;
